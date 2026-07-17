@@ -1,8 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /pages/login/
-Disallow: /pages/signup/
-Disallow: /pages/orders/
 
 Sitemap: https://teamspirit.co.kr/sitemap.xml
-Host: teamspirit.co.kr
