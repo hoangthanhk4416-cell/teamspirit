@@ -1,2 +1,52 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>로그인 | TeamSpirit Korea</title><meta name="robots" content="noindex,follow"><link rel="canonical" href="https://teamspirit.co.kr/pages/login/"><link rel="stylesheet" href="../common.css"></head><body><header class="page-head"><span class="brand">TeamSpirit Korea</span><a class="back" href="../../">← 홈으로</a></header><main class="placeholder"><section class="card"><div class="icon">🔐</div><h1>로그인</h1><p>로그인 기능을 준비하고 있습니다.</p><span class="soon">준비 중</span></section></main></body></html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>로그인 | TeamSpirit Korea</title>
+  <meta name="robots" content="noindex,follow">
+  <link rel="canonical" href="https://teamspirit.co.kr/pages/login/">
+  <link rel="stylesheet" href="../common.css">
+</head>
+<body>
+  <header class="page-head"><span class="brand">TeamSpirit Korea</span><a class="back" href="../../">← 홈으로</a></header>
+  <main class="login-page">
+    <section class="login-panel" aria-labelledby="login-title">
+      <h1 id="login-title">일반 로그인</h1>
+      <form class="login-form" id="login-form">
+        <div class="login-fields">
+          <label><span hidden>아이디</span><input name="username" autocomplete="username" placeholder="아이디" required></label>
+          <label><span hidden>비밀번호</span><input type="password" name="password" autocomplete="current-password" placeholder="비밀번호" required></label>
+        </div>
+        <button class="primary-login" type="submit">로그인</button>
+      </form>
+      <div class="login-links">
+        <label class="remember"><input type="checkbox" name="remember"> 아이디 저장</label>
+        <nav aria-label="회원 도움말"><a href="../signup/">회원가입</a><a href="#">아이디찾기</a><a href="#">비밀번호찾기</a></nav>
+      </div>
+
+      <h2>간편 로그인</h2>
+      <div class="social-logins">
+        <button class="social-login kakao" type="button" data-provider="Kakao"><span class="social-mark" aria-hidden="true"></span><span>카카오로 로그인</span></button>
+        <button class="social-login google" type="button" data-provider="Google"><span class="social-mark" aria-hidden="true">G</span><span>Google로 로그인</span></button>
+        <button class="social-login naver" type="button" data-provider="Naver"><span class="social-mark" aria-hidden="true">N</span><span>네이버로 로그인</span></button>
+      </div>
+      <a class="guest-order" href="../orders/">비회원 주문배송조회 &gt;</a>
+      <p class="auth-note">소셜 로그인은 OAuth 앱 키 연결 후 활성화됩니다. 비밀 키는 브라우저나 공개 저장소에 저장하지 않습니다.</p>
+      <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+  <script>
+    const status = document.getElementById('auth-status');
+    document.getElementById('login-form').addEventListener('submit', event => {
+      event.preventDefault();
+      status.textContent = '일반 로그인 서버 연결을 준비하고 있습니다.';
+    });
+    document.querySelectorAll('[data-provider]').forEach(button => {
+      button.addEventListener('click', () => {
+        status.textContent = `${button.dataset.provider} OAuth 연결을 준비하고 있습니다.`;
+      });
+    });
+  </script>
+</body>
+</html>
