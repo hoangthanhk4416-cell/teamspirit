@@ -150,7 +150,7 @@ html{scroll-behavior:auto}body{overflow-x:hidden}img{max-width:100%}.detail-sect
     updateSeo("TEMSPIRIT-kr | 맞춤 축구 유니폼·팀 스포츠웨어","TEMSPIRIT-kr에서 축구 유니폼, 팀 키트, 트레이닝웨어와 맞춤 스포츠웨어를 디자인하고 주문하세요.");
     const visible=data.products.filter(p=>!p.hidden);
     const banners=bannerImages();
-    const featured=visible.filter(product=>product.homeFeatured===true);
+    const featured=visible.filter(product=>product.homeFeatured===true||(product.homeFeatured==null&&/^product-\d+/.test(product.id||"")));
     const popular=[...new Map([...featured,...visible.filter(product=>product.category==="popular"),...visible].map(product=>[product.id,product])).values()].slice(0,5);
     const pro=visible.filter(p=>p.category==="professional").concat(visible).slice(0,4);
     const custom=productsForCollection("halfzip");
