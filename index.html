@@ -54,6 +54,7 @@
   const attr=value=>String(value||"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const safeContactLink=value=>{const link=String(value||"").trim();return /^(https?:\/\/|kakaotalk:\/\/|fb-messenger:\/\/)/i.test(link)?link:""};
   const contactLink=value=>{const link=String(value||"").trim();return /^(https?:\/\/|kakaotalk:\/\/|\/)/i.test(link)?link:""};
+  const KAKAO_LINK="https://open.kakao.com/o/sNkgarEi";
   const money=p=>p.oldPrice?`<span class="old">${p.oldPrice}</span><span class="sale">${p.sale}</span>${p.price}`:p.price;
   let data=window.SITE_DATA||await fetch("/api/site").then(r=>r.json());
   let dataSnapshot=JSON.stringify(data);
@@ -67,10 +68,10 @@
   window.showHeroSlide=showHeroSlide;
   window.openContactChoice=function(title){const modal=document.getElementById("contactChoice");if(!modal)return;document.getElementById("contactChoiceTitle").textContent=String(title||"").replace(/\n/g," ");document.getElementById("contactChoiceStatus").textContent="";modal.hidden=false;modal.querySelector(".contact-close").focus()}
   window.closeContactChoice=function(){const modal=document.getElementById("contactChoice");if(modal)modal.hidden=true}
-  window.chooseContact=function(provider){const instagram=contactLink(data.defaultInstagramLink),kakao=contactLink(data.defaultKakaoLink);const link=provider==="instagram"?instagram:kakao;if(link){window.open(link,"_blank","noopener");closeContactChoice();return}document.getElementById("contactChoiceStatus").textContent=provider==="instagram"?"Instagram 링크를 준비하고 있습니다.":"Kakao 링크를 준비하고 있습니다."}
+  window.chooseContact=function(provider){const instagram=contactLink(data.defaultInstagramLink);const link=provider==="instagram"?instagram:KAKAO_LINK;if(link){window.open(link,"_blank","noopener");closeContactChoice();return}document.getElementById("contactChoiceStatus").textContent="Instagram 링크를 준비하고 있습니다."}
   let floatingToastTimer=null;
   window.showFloatingToast=function(message){const toast=document.getElementById("floatingToast");if(!toast)return;toast.textContent=message;toast.hidden=false;clearTimeout(floatingToastTimer);floatingToastTimer=setTimeout(()=>toast.hidden=true,2800)}
-  window.openFloatingContact=function(provider){const link=provider==="instagram"?contactLink(data.defaultInstagramLink):contactLink(data.defaultKakaoLink);if(link){window.open(link,"_blank","noopener");return}showFloatingToast(provider==="instagram"?"Instagram 공식 링크를 준비하고 있습니다.":"Kakao 공식 링크를 준비하고 있습니다.")}
+  window.openFloatingContact=function(provider){const link=provider==="instagram"?contactLink(data.defaultInstagramLink):KAKAO_LINK;if(link){window.open(link,"_blank","noopener");return}showFloatingToast("Instagram 공식 링크를 준비하고 있습니다.")}
   window.openCart=function(){showFloatingToast("장바구니 기능을 준비하고 있습니다.")}
   function navigationProducts(label,index){const visible=(data.products||[]).filter(product=>!product.hidden);let matches=[];if(label==="CUSTOM")matches=visible.filter(product=>product.category==="custom");if(label==="FOOTBALL WEAR")matches=visible.filter(product=>product.category==="professional");if(label==="TEAM KIT"){const ids=new Set((data.teamKitSlides||[]).flatMap(slide=>slide.productIds||[]));matches=visible.filter(product=>ids.has(product.id))}if(label==="TRAINING")matches=visible.filter(product=>/training|트레이닝/i.test(`${product.id} ${product.name}`));if(!matches.length)matches=visible.slice(index%Math.max(visible.length,1)).concat(visible).slice(0,3);return matches.slice(0,4)}
   const categoryLabels={custom:"CUSTOM",football:"FOOTBALL WEAR",teamkit:"TEAM KIT",training:"TRAINING",kids:"KIDS",about:"ABOUT"};
@@ -105,7 +106,7 @@
       <div class="name">${p.name}</div><div class="price">${money(p)}</div>${contactButtons(p)}
     </article>`;
   }
-  function contactButtons(product,detail=false){if(!detail)return "";const kakao=safeContactLink(product.kakaoLink||data.defaultKakaoLink),instagram=safeContactLink(product.instagramLink||data.defaultInstagramLink);const instagramControl=instagram?`<a class="contact instagram" href="${attr(instagram)}" target="_blank" rel="noopener">Instagram 주문</a>`:`<button class="contact instagram" type="button" onclick="openFloatingContact('instagram')">Instagram 주문</button>`;const kakaoControl=kakao?`<a class="contact kakao" href="${attr(kakao)}" target="_blank" rel="noopener">KakaoTalk 주문</a>`:`<button class="contact kakao" type="button" onclick="openFloatingContact('kakao')">KakaoTalk 주문</button>`;return `<div class="contact-buttons detail-contact">${instagramControl}${kakaoControl}</div>`;}
+  function contactButtons(product,detail=false){if(!detail)return "";const instagram=safeContactLink(product.instagramLink||data.defaultInstagramLink);const instagramControl=instagram?`<a class="contact instagram" href="${attr(instagram)}" target="_blank" rel="noopener">Instagram 주문</a>`:`<button class="contact instagram" type="button" onclick="openFloatingContact('instagram')">Instagram 주문</button>`;const kakaoControl=`<a class="contact kakao" href="${KAKAO_LINK}" target="_blank" rel="noopener">KakaoTalk 주문</a>`;return `<div class="contact-buttons detail-contact">${instagramControl}${kakaoControl}</div>`;}
   function productBy(id){const visible=data.products.filter(p=>!p.hidden);return visible.find(p=>p.id===id)||visible[0]}
   window.openProduct=function(id){location.hash="product/"+id;render()}
   window.openCategory=function(slug){location.hash="category/"+slug;render()}
