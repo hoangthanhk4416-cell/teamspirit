@@ -110,7 +110,8 @@ function doPost(event) {
         .setVerticalAlignment("middle")
         .setWrap(true);
       itemsSheet.getRange(firstItemRow, 7, itemRows.length, 1).setNumberFormat("0");
-      itemsSheet.getRange(firstItemRow, 8, itemRows.length, 2).setNumberFormat('#,##0" ₩"');
+    itemsSheet.getRange(firstItemRow, 8, itemRows.length, 1).setNumberFormat('#,##0" ₩"');
+    itemsSheet.getRange(firstItemRow, 9, itemRows.length, 1).setNumberFormat('#,##0" ₩"');
     }
 
     const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
@@ -289,8 +290,12 @@ function ensureSheetLayout_(spreadsheet) {
     ordersSheet.getRange(2, 10, ordersSheet.getLastRow() - 1, 1).setNumberFormat('#,##0" ₩"');
   }
   if (itemsSheet.getLastRow() > 1) {
-    itemsSheet.getRange(2, 7, itemsSheet.getLastRow() - 1, 1).setNumberFormat("0");
-    itemsSheet.getRange(2, 8, itemsSheet.getLastRow() - 1, 2).setNumberFormat('#,##0" ₩"');
+    const itemRowCount = itemsSheet.getLastRow() - 1;
+    itemsSheet.getRange(2, 7, itemRowCount, 1).setNumberFormat("0");
+    // Google Sheets Tables reject column operations spanning multiple columns.
+    // Format unit price and line total as two independent one-column ranges.
+    itemsSheet.getRange(2, 8, itemRowCount, 1).setNumberFormat('#,##0" ₩"');
+    itemsSheet.getRange(2, 9, itemRowCount, 1).setNumberFormat('#,##0" ₩"');
   }
   if (trackingSheet.getLastRow() > 1) {
     const trackingRowCount = trackingSheet.getLastRow() - 1;
