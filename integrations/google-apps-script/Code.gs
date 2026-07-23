@@ -3,8 +3,8 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v6";
-const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
+const SHEET_LAYOUT_VERSION = "2026-07-24-v7";
+const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 const KOREAN_STATUS = {
   "Mới": "신규 접수",
@@ -12,7 +12,7 @@ const KOREAN_STATUS = {
   "Đang thiết kế": "디자인 진행",
   "Đang sản xuất": "제작 중",
   "Đang giao": "배송 중",
-  "Hoàn thành": "완료",
+  "Hoàn tất": "완료",
   "Đã hủy": "취소",
 };
 const STATUS_KEY = {
@@ -21,7 +21,7 @@ const STATUS_KEY = {
   "Đang thiết kế": "DESIGNING",
   "Đang sản xuất": "PRODUCTION",
   "Đang giao": "SHIPPING",
-  "Hoàn thành": "COMPLETED",
+  "Hoàn tất": "COMPLETED",
   "Đã hủy": "CANCELLED",
 };
 const KOREAN_NOTICE = {
@@ -30,7 +30,7 @@ const KOREAN_NOTICE = {
   "Đang thiết kế": "요청하신 내용을 바탕으로 디자인 시안을 준비하고 있습니다.",
   "Đang sản xuất": "디자인 확인이 완료되어 상품을 제작하고 있습니다.",
   "Đang giao": "제작이 완료되어 배송이 진행 중입니다.",
-  "Hoàn thành": "배송이 완료되었습니다. TEAMSPIRIT를 이용해 주셔서 감사합니다.",
+  "Hoàn tất": "배송이 완료되었습니다. TEAMSPIRIT를 이용해 주셔서 감사합니다.",
   "Đã hủy": "주문이 취소되었습니다. 자세한 내용은 고객 안내 메시지를 확인하거나 문의해 주세요.",
 };
 
@@ -385,8 +385,8 @@ function handleOrderStatusEdit(event) {
     orderIds.forEach((row, index) => {
       const orderId = String(row[0] || "").trim();
       const rawStatus = String(statuses[index][0] || "").trim();
-      const status = isTrackingStatusEdit ? internalStatusFromKorean_(rawStatus) : rawStatus;
-      if (orderId && ORDER_STATUSES.includes(status)) {
+      const status = isTrackingStatusEdit ? internalStatusFromKorean_(rawStatus) : canonicalStatus_(rawStatus);
+      if (orderId && status) {
         syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status);
       }
     });
@@ -433,7 +433,7 @@ function syncAllStatuses_(ordersSheet, itemsSheet) {
   if (ordersSheet.getLastRow() > 1) {
     const rowCount = ordersSheet.getLastRow() - 1;
     const rows = ordersSheet.getRange(2, 1, rowCount, 3).getDisplayValues();
-    const normalizedStatuses = rows.map(row => [ORDER_STATUSES.includes(row[2]) ? row[2] : "Mới"]);
+    const normalizedStatuses = rows.map(row => [canonicalStatus_(row[2]) || "Mới"]);
     ordersSheet.getRange(2, 3, rowCount, 1).setValues(normalizedStatuses);
     rows.forEach((row, index) => {
       const orderId = String(row[0] || "").trim();
@@ -448,7 +448,7 @@ function syncAllStatuses_(ordersSheet, itemsSheet) {
     const statuses = orderIds.map((row, index) => {
       const orderId = String(row[0] || "").trim();
       const existingStatus = existingStatuses[index][0];
-      return [statusByOrder[orderId] || (ORDER_STATUSES.includes(existingStatus) ? existingStatus : "Mới")];
+      return [statusByOrder[orderId] || canonicalStatus_(existingStatus) || "Mới"];
     });
     itemsSheet.getRange(2, 14, rowCount, 1).setValues(statuses);
   }
@@ -473,7 +473,7 @@ function syncTrackingSheet_(ordersSheet, trackingSheet) {
     ordersSheet.getRange(2, 1, ordersSheet.getLastRow() - 1, 11).getValues().forEach(row => {
       const orderId = String(row[0] || "").trim();
       if (!orderId) return;
-      const status = ORDER_STATUSES.includes(String(row[2] || "")) ? String(row[2]) : "Mới";
+      const status = canonicalStatus_(row[2]) || "Mới";
       const existing = existingByOrder[orderId] || {};
       rows.push([
         orderId,
@@ -514,7 +514,7 @@ function syncTrackingSheet_(ordersSheet, trackingSheet) {
 
 function upsertTrackingOrder_(trackingSheet, order) {
   if (!trackingSheet) return;
-  const status = ORDER_STATUSES.includes(order.status) ? order.status : "Mới";
+  const status = canonicalStatus_(order.status) || "Mới";
   const matches = trackingSheet.createTextFinder(String(order.orderId))
     .matchEntireCell(true)
     .findAll()
@@ -559,6 +559,14 @@ function internalStatusFromKorean_(value) {
   return found || "Mới";
 }
 
+function canonicalStatus_(value) {
+  const status = String(value || "").trim();
+  // Accept the legacy wording already stored in older spreadsheet rows, while
+  // keeping "Hoàn tất" as the only current dropdown value.
+  if (status === "Hoàn thành") return "Hoàn tất";
+  return ORDER_STATUSES.includes(status) ? status : "";
+}
+
 function koreanSummary_(value) {
   return String(value || "")
     .replaceAll("Giữ nguyên thiết kế", "기존 디자인 유지")
@@ -598,7 +606,7 @@ function applyStatusRules_(sheet, column) {
     ["Đang thiết kế", "#d9eaf7", "#134f5c"],
     ["Đang sản xuất", "#cfe2f3", "#073763"],
     ["Đang giao", "#d9d2e9", "#351c75"],
-    ["Hoàn thành", "#b6d7a8", "#274e13"],
+    ["Hoàn tất", "#b6d7a8", "#274e13"],
     ["Đã hủy", "#f4cccc", "#990000"],
   ];
   const statusRules = styles.map(([status, background, fontColor]) =>
