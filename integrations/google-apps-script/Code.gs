@@ -2,7 +2,9 @@ const SPREADSHEET_ID = "1AtQo4vi6nlYV3yzRPUit0iiJTmvgllGplSSfgl1aigU";
 const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-23-v2";
+const SHEET_LAYOUT_VERSION = "2026-07-23-v3";
+const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
+const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 
 function doGet() {
   return jsonResponse_({ ok: true, service: "TEAMSPIRIT order intake" });
@@ -63,6 +65,7 @@ function doPost(event) {
       safe_(item.printName),
       safe_(item.jerseyNumber),
       safe_(item.url || payload.pageUrl),
+      "Mới",
     ]);
     if (itemRows.length) {
       const firstItemRow = itemsSheet.getLastRow() + 1;
@@ -155,10 +158,11 @@ function ensureSheetLayout_(spreadsheet) {
     "Tên in áo",
     "Số áo",
     "Trang sản phẩm",
+    "Trạng thái",
   ];
 
   formatTable_(ordersSheet, orderHeaders, [140, 180, 110, 160, 130, 230, 120, 280, 100, 120, 320, 220, 100, 260]);
-  formatTable_(itemsSheet, itemHeaders, [140, 55, 120, 240, 100, 170, 90, 120, 120, 280, 130, 80, 260]);
+  formatTable_(itemsSheet, itemHeaders, [140, 55, 120, 240, 100, 190, 90, 120, 120, 280, 130, 80, 260, 120]);
 
   if (ordersSheet.getLastRow() > 1) {
     ordersSheet.getRange(2, 2, ordersSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
@@ -170,39 +174,152 @@ function ensureSheetLayout_(spreadsheet) {
     itemsSheet.getRange(2, 8, itemsSheet.getLastRow() - 1, 2).setNumberFormat('#,##0" ₩"');
   }
 
-  const statusRange = ordersSheet.getRange(2, 3, Math.max(ordersSheet.getMaxRows() - 1, 1), 1);
-  const otherRules = ordersSheet.getConditionalFormatRules().filter(rule =>
-    !rule.getRanges().some(range => range.getColumn() === 3 && range.getNumColumns() === 1)
-  );
-  const statusRules = [
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo("Mới")
-      .setBackground("#fff2cc")
-      .setFontColor("#7f6000")
-      .setRanges([statusRange])
-      .build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo("Đã xác nhận")
-      .setBackground("#d9ead3")
-      .setFontColor("#274e13")
-      .setRanges([statusRange])
-      .build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenTextEqualTo("Đã hủy")
-      .setBackground("#f4cccc")
-      .setFontColor("#990000")
-      .setRanges([statusRange])
-      .build(),
-  ];
-  ordersSheet.setConditionalFormatRules(otherRules.concat(statusRules));
+  normalizeExistingDesignChoices_(itemsSheet);
+  syncAllStatuses_(ordersSheet, itemsSheet);
+  applyDropdown_(ordersSheet, 3, ORDER_STATUSES);
+  applyDropdown_(itemsSheet, 6, DESIGN_CHOICES);
+  applyDropdown_(itemsSheet, 14, ORDER_STATUSES);
+  applyStatusRules_(ordersSheet, 3);
+  applyStatusRules_(itemsSheet, 14);
   properties.setProperty("SHEET_LAYOUT_VERSION", SHEET_LAYOUT_VERSION);
 }
 
 function setupOrderSheets() {
   const properties = PropertiesService.getScriptProperties();
   properties.deleteProperty("SHEET_LAYOUT_VERSION");
-  ensureSheetLayout_(SpreadsheetApp.openById(SPREADSHEET_ID));
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  ensureSheetLayout_(spreadsheet);
+  ensureStatusSyncTrigger_(spreadsheet);
   SpreadsheetApp.flush();
+}
+
+function handleOrderStatusEdit(event) {
+  if (!event || !event.range || event.range.getRow() < 2) return;
+
+  const sheet = event.range.getSheet();
+  const spreadsheet = sheet.getParent();
+  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
+  const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
+  if (!ordersSheet || !itemsSheet) return;
+
+  const firstColumn = event.range.getColumn();
+  const lastColumn = firstColumn + event.range.getNumColumns() - 1;
+  const isOrderStatusEdit = sheet.getName() === ORDERS_SHEET && firstColumn <= 3 && lastColumn >= 3;
+  const isItemStatusEdit = sheet.getName() === ITEMS_SHEET && firstColumn <= 14 && lastColumn >= 14;
+  if (!isOrderStatusEdit && !isItemStatusEdit) return;
+
+  const statusColumn = isOrderStatusEdit ? 3 : 14;
+  const firstRow = event.range.getRow();
+  const rowCount = event.range.getNumRows();
+  const orderIds = sheet.getRange(firstRow, 1, rowCount, 1).getDisplayValues();
+  const statuses = sheet.getRange(firstRow, statusColumn, rowCount, 1).getDisplayValues();
+
+  orderIds.forEach((row, index) => {
+    const orderId = String(row[0] || "").trim();
+    const status = String(statuses[index][0] || "").trim();
+    if (orderId && ORDER_STATUSES.includes(status)) {
+      syncOrderStatus_(ordersSheet, itemsSheet, orderId, status);
+    }
+  });
+}
+
+function ensureStatusSyncTrigger_(spreadsheet) {
+  const exists = ScriptApp.getProjectTriggers().some(trigger =>
+    trigger.getHandlerFunction() === "handleOrderStatusEdit" &&
+    trigger.getEventType() === ScriptApp.EventType.ON_EDIT
+  );
+  if (!exists) {
+    ScriptApp.newTrigger("handleOrderStatusEdit")
+      .forSpreadsheet(spreadsheet)
+      .onEdit()
+      .create();
+  }
+}
+
+function syncOrderStatus_(ordersSheet, itemsSheet, orderId, status) {
+  ordersSheet.createTextFinder(orderId)
+    .matchEntireCell(true)
+    .findAll()
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .forEach(cell => ordersSheet.getRange(cell.getRow(), 3).setValue(status));
+
+  itemsSheet.createTextFinder(orderId)
+    .matchEntireCell(true)
+    .findAll()
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .forEach(cell => itemsSheet.getRange(cell.getRow(), 14).setValue(status));
+}
+
+function syncAllStatuses_(ordersSheet, itemsSheet) {
+  const statusByOrder = {};
+  if (ordersSheet.getLastRow() > 1) {
+    const rowCount = ordersSheet.getLastRow() - 1;
+    const rows = ordersSheet.getRange(2, 1, rowCount, 3).getDisplayValues();
+    const normalizedStatuses = rows.map(row => [ORDER_STATUSES.includes(row[2]) ? row[2] : "Mới"]);
+    ordersSheet.getRange(2, 3, rowCount, 1).setValues(normalizedStatuses);
+    rows.forEach((row, index) => {
+      const orderId = String(row[0] || "").trim();
+      if (orderId) statusByOrder[orderId] = normalizedStatuses[index][0];
+    });
+  }
+
+  if (itemsSheet.getLastRow() > 1) {
+    const rowCount = itemsSheet.getLastRow() - 1;
+    const orderIds = itemsSheet.getRange(2, 1, rowCount, 1).getDisplayValues();
+    const existingStatuses = itemsSheet.getRange(2, 14, rowCount, 1).getDisplayValues();
+    const statuses = orderIds.map((row, index) => {
+      const orderId = String(row[0] || "").trim();
+      const existingStatus = existingStatuses[index][0];
+      return [statusByOrder[orderId] || (ORDER_STATUSES.includes(existingStatus) ? existingStatus : "Mới")];
+    });
+    itemsSheet.getRange(2, 14, rowCount, 1).setValues(statuses);
+  }
+}
+
+function normalizeExistingDesignChoices_(itemsSheet) {
+  if (itemsSheet.getLastRow() < 2) return;
+
+  const range = itemsSheet.getRange(2, 6, itemsSheet.getLastRow() - 1, 1);
+  const values = range.getDisplayValues().map(row => {
+    const value = String(row[0] || "").trim();
+    if (!value || DESIGN_CHOICES.includes(value)) return [value];
+    return ["Giữ nguyên thiết kế"];
+  });
+  range.setValues(values);
+}
+
+function applyDropdown_(sheet, column, choices) {
+  const rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(choices, true)
+    .setAllowInvalid(false)
+    .build();
+  sheet.getRange(2, column, rowCount, 1).setDataValidation(rule);
+}
+
+function applyStatusRules_(sheet, column) {
+  const statusRange = sheet.getRange(2, column, Math.max(sheet.getMaxRows() - 1, 1), 1);
+  const otherRules = sheet.getConditionalFormatRules().filter(rule =>
+    !rule.getRanges().some(range => range.getColumn() === column && range.getNumColumns() === 1)
+  );
+  const styles = [
+    ["Mới", "#fff2cc", "#7f6000"],
+    ["Đã xác nhận", "#d9ead3", "#274e13"],
+    ["Đang thiết kế", "#d9eaf7", "#134f5c"],
+    ["Đang sản xuất", "#cfe2f3", "#073763"],
+    ["Đang giao", "#d9d2e9", "#351c75"],
+    ["Hoàn thành", "#b6d7a8", "#274e13"],
+    ["Đã hủy", "#f4cccc", "#990000"],
+  ];
+  const statusRules = styles.map(([status, background, fontColor]) =>
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(status)
+      .setBackground(background)
+      .setFontColor(fontColor)
+      .setRanges([statusRange])
+      .build()
+  );
+  sheet.setConditionalFormatRules(otherRules.concat(statusRules));
 }
 
 function formatTable_(sheet, headers, widths) {
@@ -229,6 +346,10 @@ function formatTable_(sheet, headers, widths) {
       .setWrap(true);
   }
 
+  const filter = sheet.getFilter();
+  if (filter && filter.getRange().getNumColumns() !== headers.length) {
+    filter.remove();
+  }
   if (!sheet.getFilter() && sheet.getLastRow() > 1) {
     sheet.getRange(1, 1, sheet.getLastRow(), headers.length).createFilter();
   }

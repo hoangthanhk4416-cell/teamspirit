@@ -13,3 +13,11 @@ This Apps Script receives checkout payloads from the static GitHub Pages website
 7. Paste that URL into `assets/order-config.js` as `endpoint`.
 
 Do not place Google credentials or API keys in the website repository.
+
+## Apply or repair the spreadsheet layout
+
+After pasting a new `Code.gs` version:
+
+1. Select `setupOrderSheets` in the function menu.
+2. Click **Run** and approve the requested spreadsheet/trigger permissions.
+3. The function repairs headers and dropdowns, normalizes legacy design values, and installs the edit trigger that keeps order status synchronized between `Đơn hàng` and `Chi tiết sản phẩm`.
