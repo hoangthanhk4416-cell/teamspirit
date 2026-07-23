@@ -88,7 +88,7 @@
         <div class="ts-order-field"><label for="tsQuantity">수량 *</label><input id="tsQuantity" type="number" min="1" max="999" value="${escapeHtml(document.getElementById("productQuantity")?.value || 1)}" inputmode="numeric" required></div>
         <div class="ts-order-field"><label for="tsJerseyNumber">등번호</label><input id="tsJerseyNumber" maxlength="3" placeholder="예: 10"></div>
         <div class="ts-order-field"><label for="tsPrintName">마킹 이름</label><input id="tsPrintName" maxlength="30" placeholder="이름 또는 문구 입력"></div>
-        <div class="ts-order-field full"><label for="tsDesignRequest">제작 요청사항</label><textarea id="tsDesignRequest" maxlength="1000" placeholder="팀 로고, 배색, 카라 형태 등 제작 요청사항을 입력해 주세요."></textarea></div>
+        <div class="ts-order-field full"><label for="tsDesignRequest">제작 요청사항</label><textarea id="tsDesignRequest" maxlength="1000" placeholder="원하는 변경 사항을 입력하거나 Instagram 또는 KakaoTalk에서 상담받을 수 있습니다."></textarea></div>
       </div>
       <p class="ts-order-note">제작 전 TEAMSPIRIT 담당자가 디자인, 최종 금액과 제작 일정을 확인해 드립니다.</p>
       <p class="ts-order-status" id="tsOrderStatus" role="status" aria-live="polite"></p>`;
