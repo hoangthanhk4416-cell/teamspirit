@@ -4,7 +4,7 @@
   const config = window.TEAMSPIRIT_ORDER_CONFIG || {};
   const sizes = ["55 XS","60 S","65 M","70 L","75 XL","80 2XL","85 3XL","90","95","100","105","110","Khác"];
   const colors = ["디자인 기본색","블랙","화이트","레드","블루","그린","옐로","오렌지","퍼플","핑크","기타"];
-  const contacts = ["KakaoTalk","Instagram","Điện thoại","Zalo","Khác"];
+  const contacts = ["Instagram","KakaoTalk","Điện thoại"];
   let selectedProduct = null;
   let currentStep = 1;
 
@@ -84,7 +84,7 @@
         <div class="ts-order-field"><label for="tsColor">색상 *</label><select id="tsColor" required><option value="">색상 선택</option>${colors.map(color => `<option>${escapeHtml(color)}</option>`).join("")}</select></div>
         <div class="ts-order-field"><label for="tsQuantity">수량 *</label><input id="tsQuantity" type="number" min="1" max="999" value="${escapeHtml(document.getElementById("productQuantity")?.value || 1)}" inputmode="numeric" required></div>
         <div class="ts-order-field"><label for="tsJerseyNumber">등번호</label><input id="tsJerseyNumber" maxlength="3" placeholder="예: 10"></div>
-        <div class="ts-order-field"><label for="tsPrintName">마킹 이름</label><input id="tsPrintName" maxlength="30" placeholder="예: MINH"></div>
+        <div class="ts-order-field"><label for="tsPrintName">마킹 이름</label><input id="tsPrintName" maxlength="30" placeholder="이름 또는 문구 입력"></div>
         <div class="ts-order-field full"><label for="tsDesignRequest">제작·연락 요청사항</label><textarea id="tsDesignRequest" maxlength="1000" placeholder="팀 로고, 배색, 카라 형태, 희망 수령일 또는 연락 가능한 시간을 입력해 주세요."></textarea></div>
       </div>
       <p class="ts-order-note">제작 전 TEAMSPIRIT 담당자가 디자인, 최종 금액과 제작 일정을 확인해 드립니다.</p>
@@ -125,7 +125,7 @@
       <div class="ts-order-grid">
         <div class="ts-order-field"><label for="tsCustomerName">주문자 이름 *</label><input id="tsCustomerName" autocomplete="name" maxlength="80" required></div>
         <div class="ts-order-field"><label for="tsPhone">전화번호 *</label><input id="tsPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="010-0000-0000" required></div>
-        <div class="ts-order-field full"><label for="tsAddress">배송 주소 *</label><textarea id="tsAddress" autocomplete="street-address" maxlength="300" required></textarea></div>
+        <div class="ts-order-field full"><label for="tsAddress">배송 주소</label><textarea id="tsAddress" autocomplete="street-address" maxlength="300"></textarea></div>
         <div class="ts-order-field"><label for="tsContactChannel">희망 연락 채널 *</label><select id="tsContactChannel" required>${contacts.map(channel => `<option>${escapeHtml(channel)}</option>`).join("")}</select></div>
         <div class="ts-order-field"><label for="tsContactTime">연락 가능 시간</label><input id="tsContactTime" maxlength="80" placeholder="예: 18:00–21:00"></div>
       </div>
@@ -138,14 +138,15 @@
     const name = document.getElementById("tsCustomerName").value.trim();
     const phone = document.getElementById("tsPhone").value.trim();
     const address = document.getElementById("tsAddress").value.trim();
-    if (name.length < 2 || !/[\d]{8,}/.test(phone.replace(/\D/g, "")) || address.length < 8) {
-      document.getElementById("tsOrderStatus").textContent = "이름, 올바른 전화번호와 배송 주소를 입력해 주세요.";
+    const normalizedPhone = phone.replace(/\D/g, "");
+    if (name.length < 2 || !/^0\d{8,10}$/.test(normalizedPhone)) {
+      document.getElementById("tsOrderStatus").textContent = "이름과 올바른 전화번호를 입력해 주세요.";
       return null;
     }
     return {
       name,
       phone,
-      address,
+      address: address || "Chưa cung cấp",
       contactChannel: document.getElementById("tsContactChannel").value,
       contactTime: document.getElementById("tsContactTime").value.trim(),
     };
@@ -225,7 +226,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ts-order-button";
-      button.textContent = "바로 주문하기";
+      button.textContent = "주문·무료 샘플";
       button.addEventListener("click", () => openModal(currentProduct()));
       const actions = productInfo.querySelector(".contact-order-actions");
       productInfo.insertBefore(button, actions || null);
@@ -237,7 +238,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "ts-order-button";
-      button.textContent = "주문하기";
+      button.textContent = "주문·무료 샘플";
       button.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
