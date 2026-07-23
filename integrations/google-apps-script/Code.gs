@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v5";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v6";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 const KOREAN_STATUS = {
@@ -350,12 +350,6 @@ function handleOrderStatusEdit(event) {
   if (!event || !event.range || event.range.getRow() < 2) return;
 
   const sheet = event.range.getSheet();
-  const spreadsheet = sheet.getParent();
-  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
-  const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
-  const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
-  if (!ordersSheet || !itemsSheet || !trackingSheet) return;
-
   const firstColumn = event.range.getColumn();
   const lastColumn = firstColumn + event.range.getNumColumns() - 1;
   const isOrderStatusEdit = sheet.getName() === ORDERS_SHEET && firstColumn <= 3 && lastColumn >= 3;
@@ -364,33 +358,53 @@ function handleOrderStatusEdit(event) {
   const isTrackingMessageEdit = sheet.getName() === TRACKING_SHEET && firstColumn <= 5 && lastColumn >= 5;
   if (!isOrderStatusEdit && !isItemStatusEdit && !isTrackingStatusEdit && !isTrackingMessageEdit) return;
 
-  const firstRow = event.range.getRow();
-  const rowCount = event.range.getNumRows();
-  if (isTrackingMessageEdit && !isTrackingStatusEdit) {
-    trackingSheet.getRange(firstRow, 10, rowCount, 1).setValue(new Date()).setNumberFormat("dd/MM/yyyy HH:mm:ss");
-    return;
-  }
+  // Installable edit triggers can overlap when staff changes a status twice in
+  // quick succession. Serialize them and read the live cell only after the lock
+  // is acquired so an older "Đã hủy" task cannot overwrite "Hoàn tất".
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const spreadsheet = sheet.getParent();
+    const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
+    const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
+    const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
+    if (!ordersSheet || !itemsSheet || !trackingSheet) return;
 
-  const statusColumn = isOrderStatusEdit || isTrackingStatusEdit ? 3 : 14;
-  const orderIds = sheet.getRange(firstRow, 1, rowCount, 1).getDisplayValues();
-  const statuses = sheet.getRange(firstRow, statusColumn, rowCount, 1).getDisplayValues();
-
-  orderIds.forEach((row, index) => {
-    const orderId = String(row[0] || "").trim();
-    const rawStatus = String(statuses[index][0] || "").trim();
-    const status = isTrackingStatusEdit ? internalStatusFromKorean_(rawStatus) : rawStatus;
-    if (orderId && ORDER_STATUSES.includes(status)) {
-      syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status);
+    const firstRow = event.range.getRow();
+    const rowCount = event.range.getNumRows();
+    if (isTrackingMessageEdit && !isTrackingStatusEdit) {
+      trackingSheet.getRange(firstRow, 10, rowCount, 1).setValue(new Date()).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+      SpreadsheetApp.flush();
+      return;
     }
-  });
+
+    const statusColumn = isOrderStatusEdit || isTrackingStatusEdit ? 3 : 14;
+    const orderIds = sheet.getRange(firstRow, 1, rowCount, 1).getDisplayValues();
+    const statuses = sheet.getRange(firstRow, statusColumn, rowCount, 1).getDisplayValues();
+
+    orderIds.forEach((row, index) => {
+      const orderId = String(row[0] || "").trim();
+      const rawStatus = String(statuses[index][0] || "").trim();
+      const status = isTrackingStatusEdit ? internalStatusFromKorean_(rawStatus) : rawStatus;
+      if (orderId && ORDER_STATUSES.includes(status)) {
+        syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status);
+      }
+    });
+    SpreadsheetApp.flush();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ensureStatusSyncTrigger_(spreadsheet) {
-  const exists = ScriptApp.getProjectTriggers().some(trigger =>
+  const matchingTriggers = ScriptApp.getProjectTriggers().filter(trigger =>
     trigger.getHandlerFunction() === "handleOrderStatusEdit" &&
     trigger.getEventType() === ScriptApp.EventType.ON_EDIT
   );
-  if (!exists) {
+  // Keep exactly one trigger. Duplicate triggers can replay an older status
+  // after a newer edit and leave the customer tracking row out of sync.
+  matchingTriggers.slice(1).forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  if (!matchingTriggers.length) {
     ScriptApp.newTrigger("handleOrderStatusEdit")
       .forSpreadsheet(spreadsheet)
       .onEdit()
