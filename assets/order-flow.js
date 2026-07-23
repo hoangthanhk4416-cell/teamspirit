@@ -132,8 +132,7 @@
         <div class="ts-order-field"><label for="tsCustomerName">주문자 이름 *</label><input id="tsCustomerName" autocomplete="name" maxlength="80" required></div>
         <div class="ts-order-field"><label for="tsPhone">전화번호 *</label><input id="tsPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="010-0000-0000" required></div>
         <div class="ts-order-field full"><label for="tsAddress">배송 주소</label><textarea id="tsAddress" autocomplete="street-address" maxlength="300"></textarea></div>
-        <div class="ts-order-field"><label for="tsContactChannel">희망 연락 채널 *</label><select id="tsContactChannel" required>${contacts.map(channel => `<option>${escapeHtml(channel)}</option>`).join("")}</select></div>
-        <div class="ts-order-field"><label for="tsContactTime">연락 가능 시간</label><input id="tsContactTime" maxlength="80" placeholder="예: 18:00–21:00"></div>
+        <div class="ts-order-field full"><label for="tsContactChannel">희망 연락 채널 (선택)</label><select id="tsContactChannel"><option value="">연락 요청 안 함</option>${contacts.map(channel => `<option>${escapeHtml(channel)}</option>`).join("")}</select></div>
       </div>
       <p class="ts-order-status" id="tsOrderStatus" role="status" aria-live="polite"></p>`;
     document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-secondary" type="button" data-action="back">이전</button><button class="ts-order-primary" type="button" data-action="submit">주문 확정</button>`;
@@ -152,9 +151,8 @@
     return {
       name,
       phone,
-      address: address || "Chưa cung cấp",
-      contactChannel: document.getElementById("tsContactChannel").value,
-      contactTime: document.getElementById("tsContactTime").value.trim(),
+      address: !address ? "Không cung cấp" : address.length < 8 ? `${address} (địa chỉ ngắn)` : address,
+      contactChannel: document.getElementById("tsContactChannel").value || "Không yêu cầu",
     };
   }
 
@@ -193,7 +191,10 @@
       document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-primary" type="button" data-action="done">완료</button>`;
       bindActions();
     } catch (error) {
-      document.getElementById("tsOrderStatus").textContent = `주문을 전송하지 못했습니다: ${error.message}. 다시 시도하거나 KakaoTalk으로 문의해 주세요.`;
+      const message = error.message === "Thiếu địa chỉ"
+        ? "Địa chỉ không bắt buộc. Vui lòng thử gửi lại đơn hàng"
+        : error.message;
+      document.getElementById("tsOrderStatus").textContent = `Không thể gửi đơn hàng: ${message}. Vui lòng thử lại hoặc liên hệ qua KakaoTalk.`;
       button.disabled = false;
       button.textContent = "주문 확정";
     }
