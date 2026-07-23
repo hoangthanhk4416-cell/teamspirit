@@ -187,8 +187,8 @@
       });
       const result = await response.json();
       if (!response.ok || result.ok !== true) throw new Error(result.error || "주문을 저장할 수 없습니다");
-      document.getElementById("tsOrderBody").innerHTML = `<div class="ts-order-success"><div class="ts-order-success-mark">✓</div><h3>주문이 접수되었습니다</h3><p>주문번호는 <strong>${escapeHtml(orderId)}</strong>입니다.<br>TEAMSPIRIT 담당자가 디자인과 배송 정보를 확인하기 위해 연락드리겠습니다.</p></div>`;
-      document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-primary" type="button" data-action="done">완료</button>`;
+      document.getElementById("tsOrderBody").innerHTML = `<div class="ts-order-success"><div class="ts-order-success-mark">✓</div><h3>주문이 접수되었습니다</h3><p>아래 주문번호로 제작 및 배송 상태를 확인할 수 있습니다.</p><div class="ts-order-code"><strong>${escapeHtml(orderId)}</strong><button type="button" data-action="copy-order" data-order-id="${escapeHtml(orderId)}">주문번호 복사</button></div><p>TEAMSPIRIT 담당자가 디자인과 배송 정보를 확인하기 위해 연락드리겠습니다.</p></div>`;
+      document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-secondary" type="button" data-action="done">닫기</button><button class="ts-order-primary" type="button" data-action="track-order" data-order-id="${escapeHtml(orderId)}">주문 조회하기</button>`;
       bindActions();
     } catch (error) {
       const message = error.message === "Thiếu địa chỉ"
@@ -207,6 +207,23 @@
         if (button.dataset.action === "continue") renderStepTwo();
         if (button.dataset.action === "back") renderStepOne();
         if (button.dataset.action === "submit") submitOrder(button);
+        if (button.dataset.action === "track-order") location.href = `/pages/orders/?orderId=${encodeURIComponent(button.dataset.orderId)}`;
+      });
+    });
+    document.getElementById("tsOrderBody").querySelectorAll("[data-action='copy-order']").forEach(button => {
+      button.addEventListener("click", async () => {
+        const orderId = button.dataset.orderId || "";
+        try {
+          await navigator.clipboard.writeText(orderId);
+        } catch (_error) {
+          const temporary = document.createElement("textarea");
+          temporary.value = orderId;
+          document.body.appendChild(temporary);
+          temporary.select();
+          document.execCommand("copy");
+          temporary.remove();
+        }
+        button.textContent = "복사되었습니다";
       });
     });
   }
