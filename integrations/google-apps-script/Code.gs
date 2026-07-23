@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v12";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v13";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Màu sắc tùy chỉnh"];
 const KOREAN_STATUS = {
@@ -160,9 +160,12 @@ function lookupOrders_(parameters) {
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   spreadsheet.setSpreadsheetTimeZone(VIETNAM_TIME_ZONE);
   const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
-  if (!trackingSheet || trackingSheet.getLastRow() < 2) return { ok: true, orders: [] };
+  if (!trackingSheet) return { ok: true, orders: [] };
 
-  const values = trackingSheet.getRange(2, 1, trackingSheet.getLastRow() - 1, 10).getValues();
+  const trackingStartRow = getDataStartRow_(trackingSheet);
+  const trackingRowCount = getDataRowCount_(trackingSheet, trackingStartRow);
+  if (!trackingRowCount) return { ok: true, orders: [] };
+  const values = trackingSheet.getRange(trackingStartRow, 1, trackingRowCount, 10).getValues();
   const matches = values
     .filter(row => {
       const rowOrderId = String(row[0] || "").trim().toUpperCase();
@@ -298,38 +301,43 @@ function ensureSheetLayout_(spreadsheet) {
   formatTable_(itemsSheet, itemHeaders, [140, 55, 120, 240, 100, 190, 90, 120, 120, 280, 130, 80, 260, 120]);
   formatTable_(trackingSheet, trackingHeaders, [155, 180, 120, 340, 340, 320, 75, 120, 135, 180]);
 
-  if (ordersSheet.getLastRow() > 1) {
-    ordersSheet.getRange(2, 2, ordersSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+  const ordersStartRow = getDataStartRow_(ordersSheet);
+  const ordersRowCount = getDataRowCount_(ordersSheet, ordersStartRow);
+  const itemsStartRow = getDataStartRow_(itemsSheet);
+  const itemsRowCount = getDataRowCount_(itemsSheet, itemsStartRow);
+  const trackingStartRow = getDataStartRow_(trackingSheet);
+  const trackingRowCount = getDataRowCount_(trackingSheet, trackingStartRow);
+
+  if (ordersRowCount) {
+    ordersSheet.getRange(ordersStartRow, 2, ordersRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
     safeSheetOperation_("format orders phone as text", () =>
-      ordersSheet.getRange(2, 5, ordersSheet.getLastRow() - 1, 1).setNumberFormat("@")
+      ordersSheet.getRange(ordersStartRow, 5, ordersRowCount, 1).setNumberFormat("@")
     );
-    ordersSheet.getRange(2, 9, ordersSheet.getLastRow() - 1, 1).setNumberFormat("0");
-    ordersSheet.getRange(2, 10, ordersSheet.getLastRow() - 1, 1).setNumberFormat('#,##0" ₩"');
+    ordersSheet.getRange(ordersStartRow, 9, ordersRowCount, 1).setNumberFormat("0");
+    ordersSheet.getRange(ordersStartRow, 10, ordersRowCount, 1).setNumberFormat('#,##0" ₩"');
   }
-  if (itemsSheet.getLastRow() > 1) {
-    const itemRowCount = itemsSheet.getLastRow() - 1;
-    itemsSheet.getRange(2, 7, itemRowCount, 1).setNumberFormat("0");
+  if (itemsRowCount) {
+    itemsSheet.getRange(itemsStartRow, 7, itemsRowCount, 1).setNumberFormat("0");
     // Google Sheets Tables reject column operations spanning multiple columns.
     // Format unit price and line total as two independent one-column ranges.
-    itemsSheet.getRange(2, 8, itemRowCount, 1).setNumberFormat('#,##0" ₩"');
-    itemsSheet.getRange(2, 9, itemRowCount, 1).setNumberFormat('#,##0" ₩"');
+    itemsSheet.getRange(itemsStartRow, 8, itemsRowCount, 1).setNumberFormat('#,##0" ₩"');
+    itemsSheet.getRange(itemsStartRow, 9, itemsRowCount, 1).setNumberFormat('#,##0" ₩"');
   }
-  if (trackingSheet.getLastRow() > 1) {
-    const trackingRowCount = trackingSheet.getLastRow() - 1;
+  if (trackingRowCount) {
     safeSheetOperation_("format tracking order time", () =>
-      trackingSheet.getRange(2, 2, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
+      trackingSheet.getRange(trackingStartRow, 2, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
     );
     safeSheetOperation_("format tracking quantity", () =>
-      trackingSheet.getRange(2, 7, trackingRowCount, 1).setNumberFormat("0")
+      trackingSheet.getRange(trackingStartRow, 7, trackingRowCount, 1).setNumberFormat("0")
     );
     safeSheetOperation_("format tracking amount", () =>
-      trackingSheet.getRange(2, 8, trackingRowCount, 1).setNumberFormat('#,##0" ₩"')
+      trackingSheet.getRange(trackingStartRow, 8, trackingRowCount, 1).setNumberFormat('#,##0" ₩"')
     );
     safeSheetOperation_("format tracking phone as text", () =>
-      trackingSheet.getRange(2, 9, trackingRowCount, 1).setNumberFormat("@")
+      trackingSheet.getRange(trackingStartRow, 9, trackingRowCount, 1).setNumberFormat("@")
     );
     safeSheetOperation_("format tracking update time", () =>
-      trackingSheet.getRange(2, 10, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
+      trackingSheet.getRange(trackingStartRow, 10, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
     );
   }
 
@@ -369,9 +377,10 @@ function setupOrderSheets() {
 }
 
 function handleOrderStatusEdit(event) {
-  if (!event || !event.range || event.range.getRow() < 2) return;
+  if (!event || !event.range) return;
 
   const sheet = event.range.getSheet();
+  if (event.range.getRow() < getDataStartRow_(sheet)) return;
   const firstColumn = event.range.getColumn();
   const lastColumn = firstColumn + event.range.getNumColumns() - 1;
   const isOrderStatusEdit = sheet.getName() === ORDERS_SHEET && firstColumn <= 3 && lastColumn >= 3;
@@ -435,16 +444,18 @@ function ensureStatusSyncTrigger_(spreadsheet) {
 }
 
 function syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status) {
+  const ordersStartRow = getDataStartRow_(ordersSheet);
+  const itemsStartRow = getDataStartRow_(itemsSheet);
   ordersSheet.createTextFinder(orderId)
     .matchEntireCell(true)
     .findAll()
-    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() >= ordersStartRow)
     .forEach(cell => ordersSheet.getRange(cell.getRow(), 3).setValue(status));
 
   itemsSheet.createTextFinder(orderId)
     .matchEntireCell(true)
     .findAll()
-    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() >= itemsStartRow)
     .forEach(cell => itemsSheet.getRange(cell.getRow(), 14).setValue(status));
 
   syncTrackingStatus_(trackingSheet, orderId, status);
@@ -452,36 +463,46 @@ function syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, statu
 
 function syncAllStatuses_(ordersSheet, itemsSheet) {
   const statusByOrder = {};
-  if (ordersSheet.getLastRow() > 1) {
-    const rowCount = ordersSheet.getLastRow() - 1;
-    const rows = ordersSheet.getRange(2, 1, rowCount, 3).getDisplayValues();
-    const normalizedStatuses = rows.map(row => [canonicalStatus_(row[2]) || "Mới"]);
-    ordersSheet.getRange(2, 3, rowCount, 1).setValues(normalizedStatuses);
+  const ordersStartRow = getDataStartRow_(ordersSheet);
+  const ordersRowCount = getDataRowCount_(ordersSheet, ordersStartRow);
+  if (ordersRowCount) {
+    const rows = ordersSheet.getRange(ordersStartRow, 1, ordersRowCount, 3).getDisplayValues();
+    const normalizedStatuses = rows.map(row => [
+      isOrderId_(row[0]) ? canonicalStatus_(row[2]) || "Mới" : row[2],
+    ]);
+    ordersSheet.getRange(ordersStartRow, 3, ordersRowCount, 1).setValues(normalizedStatuses);
     rows.forEach((row, index) => {
       const orderId = String(row[0] || "").trim();
-      if (orderId) statusByOrder[orderId] = normalizedStatuses[index][0];
+      if (isOrderId_(orderId)) statusByOrder[orderId] = normalizedStatuses[index][0];
     });
   }
 
-  if (itemsSheet.getLastRow() > 1) {
-    const rowCount = itemsSheet.getLastRow() - 1;
-    const orderIds = itemsSheet.getRange(2, 1, rowCount, 1).getDisplayValues();
-    const existingStatuses = itemsSheet.getRange(2, 14, rowCount, 1).getDisplayValues();
+  const itemsStartRow = getDataStartRow_(itemsSheet);
+  const itemsRowCount = getDataRowCount_(itemsSheet, itemsStartRow);
+  if (itemsRowCount) {
+    const orderIds = itemsSheet.getRange(itemsStartRow, 1, itemsRowCount, 1).getDisplayValues();
+    const existingStatuses = itemsSheet.getRange(itemsStartRow, 14, itemsRowCount, 1).getDisplayValues();
     const statuses = orderIds.map((row, index) => {
       const orderId = String(row[0] || "").trim();
       const existingStatus = existingStatuses[index][0];
-      return [statusByOrder[orderId] || canonicalStatus_(existingStatus) || "Mới"];
+      return [
+        isOrderId_(orderId)
+          ? statusByOrder[orderId] || canonicalStatus_(existingStatus) || "Mới"
+          : existingStatus,
+      ];
     });
-    itemsSheet.getRange(2, 14, rowCount, 1).setValues(statuses);
+    itemsSheet.getRange(itemsStartRow, 14, itemsRowCount, 1).setValues(statuses);
   }
 }
 
 function syncTrackingSheet_(ordersSheet, trackingSheet) {
   const existingByOrder = {};
-  if (trackingSheet.getLastRow() > 1) {
-    trackingSheet.getRange(2, 1, trackingSheet.getLastRow() - 1, 10).getValues().forEach(row => {
+  const trackingStartRow = getDataStartRow_(trackingSheet);
+  const trackingRowCount = getDataRowCount_(trackingSheet, trackingStartRow);
+  if (trackingRowCount) {
+    trackingSheet.getRange(trackingStartRow, 1, trackingRowCount, 10).getValues().forEach(row => {
       const orderId = String(row[0] || "").trim();
-      if (orderId) {
+      if (isOrderId_(orderId)) {
         existingByOrder[orderId] = {
           customerMessage: String(row[4] || ""),
           updatedAt: row[9] || new Date(),
@@ -491,10 +512,12 @@ function syncTrackingSheet_(ordersSheet, trackingSheet) {
   }
 
   const rows = [];
-  if (ordersSheet.getLastRow() > 1) {
-    ordersSheet.getRange(2, 1, ordersSheet.getLastRow() - 1, 11).getValues().forEach(row => {
+  const ordersStartRow = getDataStartRow_(ordersSheet);
+  const ordersRowCount = getDataRowCount_(ordersSheet, ordersStartRow);
+  if (ordersRowCount) {
+    ordersSheet.getRange(ordersStartRow, 1, ordersRowCount, 11).getValues().forEach(row => {
       const orderId = String(row[0] || "").trim();
-      if (!orderId) return;
+      if (!isOrderId_(orderId)) return;
       const status = canonicalStatus_(row[2]) || "Mới";
       const existing = existingByOrder[orderId] || {};
       rows.push([
@@ -506,43 +529,50 @@ function syncTrackingSheet_(ordersSheet, trackingSheet) {
         koreanSummary_(row[10]),
         Number(row[8] || 0),
         Number(row[9] || 0),
-        String(row[4] || ""),
+        normalizeStoredPhone_(row[4]),
         existing.updatedAt || new Date(),
       ]);
     });
   }
 
-  if (trackingSheet.getMaxRows() > 1) {
-    trackingSheet.getRange(2, 1, trackingSheet.getMaxRows() - 1, 10).clearContent();
+  if (trackingSheet.getMaxRows() >= trackingStartRow) {
+    trackingSheet.getRange(trackingStartRow, 1, trackingSheet.getMaxRows() - trackingStartRow + 1, 10).clearContent();
   }
   if (rows.length) {
-    trackingSheet.getRange(2, 9, rows.length, 1).setNumberFormat("@");
-    trackingSheet.getRange(2, 1, rows.length, 10)
+    trackingSheet.getRange(trackingStartRow, 9, rows.length, 1).setNumberFormat("@");
+    trackingSheet.getRange(trackingStartRow, 1, rows.length, 10)
       .setValues(rows)
       .setVerticalAlignment("middle")
       .setWrap(true);
-    trackingSheet.getRange(2, 2, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
-    trackingSheet.getRange(2, 7, rows.length, 1).setNumberFormat("0");
-    trackingSheet.getRange(2, 8, rows.length, 1).setNumberFormat('#,##0" ₩"');
-    trackingSheet.getRange(2, 10, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    trackingSheet.getRange(trackingStartRow, 2, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    trackingSheet.getRange(trackingStartRow, 7, rows.length, 1).setNumberFormat("0");
+    trackingSheet.getRange(trackingStartRow, 8, rows.length, 1).setNumberFormat('#,##0" ₩"');
+    trackingSheet.getRange(trackingStartRow, 10, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
   }
   const filter = trackingSheet.getFilter();
-  if (filter && (filter.getRange().getNumColumns() !== 10 || filter.getRange().getNumRows() !== trackingSheet.getLastRow())) {
+  const trackingHeaderRow = trackingStartRow - 1;
+  const expectedFilterRows = Math.max(trackingSheet.getLastRow() - trackingHeaderRow + 1, 1);
+  if (filter && (filter.getRange().getNumColumns() !== 10 || filter.getRange().getNumRows() !== expectedFilterRows)) {
     filter.remove();
   }
-  if (!trackingSheet.getFilter() && trackingSheet.getLastRow() > 1) {
-    trackingSheet.getRange(1, 1, trackingSheet.getLastRow(), 10).createFilter();
+  if (!trackingSheet.getFilter() && trackingSheet.getLastRow() >= trackingStartRow) {
+    try {
+      trackingSheet.getRange(trackingHeaderRow, 1, expectedFilterRows, 10).createFilter();
+    } catch (error) {
+      console.log(`Skipped basic filter on "${trackingSheet.getName()}": ${error.message}`);
+    }
   }
 }
 
 function upsertTrackingOrder_(trackingSheet, order) {
   if (!trackingSheet) return;
   const status = canonicalStatus_(order.status) || "Mới";
+  const trackingStartRow = getDataStartRow_(trackingSheet);
   const matches = trackingSheet.createTextFinder(String(order.orderId))
     .matchEntireCell(true)
     .findAll()
-    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1);
-  const row = matches.length ? matches[0].getRow() : trackingSheet.getLastRow() + 1;
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() >= trackingStartRow);
+  const row = matches.length ? matches[0].getRow() : Math.max(trackingSheet.getLastRow() + 1, trackingStartRow);
   const customerMessage = matches.length ? String(trackingSheet.getRange(row, 5).getValue() || "") : "";
   trackingSheet.getRange(row, 9).setNumberFormat("@");
   trackingSheet.getRange(row, 1, 1, 10).setValues([[
@@ -566,10 +596,11 @@ function upsertTrackingOrder_(trackingSheet, order) {
 
 function syncTrackingStatus_(trackingSheet, orderId, status) {
   if (!trackingSheet) return;
+  const trackingStartRow = getDataStartRow_(trackingSheet);
   trackingSheet.createTextFinder(orderId)
     .matchEntireCell(true)
     .findAll()
-    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() >= trackingStartRow)
     .forEach(cell => {
       const row = cell.getRow();
       trackingSheet.getRange(row, 3).setValue(KOREAN_STATUS[status]);
@@ -638,20 +669,26 @@ function normalizeSizesInText_(value) {
 }
 
 function normalizeExistingSizes_(ordersSheet, itemsSheet) {
-  if (ordersSheet.getLastRow() > 1) {
-    const orderRange = ordersSheet.getRange(2, 11, ordersSheet.getLastRow() - 1, 1);
+  const ordersStartRow = getDataStartRow_(ordersSheet);
+  const ordersRowCount = getDataRowCount_(ordersSheet, ordersStartRow);
+  if (ordersRowCount) {
+    const orderRange = ordersSheet.getRange(ordersStartRow, 11, ordersRowCount, 1);
     orderRange.setValues(orderRange.getDisplayValues().map(row => [normalizeSizesInText_(row[0])]));
   }
-  if (itemsSheet.getLastRow() > 1) {
-    const itemRange = itemsSheet.getRange(2, 5, itemsSheet.getLastRow() - 1, 1);
+  const itemsStartRow = getDataStartRow_(itemsSheet);
+  const itemsRowCount = getDataRowCount_(itemsSheet, itemsStartRow);
+  if (itemsRowCount) {
+    const itemRange = itemsSheet.getRange(itemsStartRow, 5, itemsRowCount, 1);
     itemRange.setValues(itemRange.getDisplayValues().map(row => [normalizeSize_(row[0])]));
   }
 }
 
 function normalizeExistingDesignChoices_(itemsSheet) {
-  if (itemsSheet.getLastRow() < 2) return;
+  const startRow = getDataStartRow_(itemsSheet);
+  const rowCount = getDataRowCount_(itemsSheet, startRow);
+  if (!rowCount) return;
 
-  const range = itemsSheet.getRange(2, 6, itemsSheet.getLastRow() - 1, 1);
+  const range = itemsSheet.getRange(startRow, 6, rowCount, 1);
   const values = range.getDisplayValues().map(row => [normalizeColor_(row[0])]);
   range.setValues(values);
 }
@@ -661,25 +698,33 @@ function normalizeExistingPhones_(ordersSheet, trackingSheet) {
     { sheet: ordersSheet, column: 5 },
     { sheet: trackingSheet, column: 9 },
   ].forEach(target => {
-    if (!target.sheet || target.sheet.getLastRow() < 2) return;
-    const range = target.sheet.getRange(2, target.column, target.sheet.getLastRow() - 1, 1);
-    const values = range.getDisplayValues().map(row => [normalizeStoredPhone_(row[0])]);
+    if (!target.sheet) return;
+    const startRow = getDataStartRow_(target.sheet);
+    const rowCount = getDataRowCount_(target.sheet, startRow);
+    if (!rowCount) return;
+    const range = target.sheet.getRange(startRow, target.column, rowCount, 1);
+    const values = range.getDisplayValues().map(row => {
+      const original = String(row[0] || "");
+      return [normalizeStoredPhone_(original) || original];
+    });
     range.setNumberFormat("@");
     range.setValues(values);
   });
 }
 
 function applyDropdown_(sheet, column, choices) {
-  const rowCount = Math.max(sheet.getMaxRows() - 1, 1);
+  const startRow = getDataStartRow_(sheet);
+  const rowCount = Math.max(sheet.getMaxRows() - startRow + 1, 1);
   const rule = SpreadsheetApp.newDataValidation()
     .requireValueInList(choices, true)
     .setAllowInvalid(false)
     .build();
-  sheet.getRange(2, column, rowCount, 1).setDataValidation(rule);
+  sheet.getRange(startRow, column, rowCount, 1).setDataValidation(rule);
 }
 
 function applyStatusRules_(sheet, column) {
-  const statusRange = sheet.getRange(2, column, Math.max(sheet.getMaxRows() - 1, 1), 1);
+  const startRow = getDataStartRow_(sheet);
+  const statusRange = sheet.getRange(startRow, column, Math.max(sheet.getMaxRows() - startRow + 1, 1), 1);
   const otherRules = sheet.getConditionalFormatRules().filter(rule =>
     !rule.getRanges().some(range => range.getColumn() === column && range.getNumColumns() === 1)
   );
@@ -704,7 +749,8 @@ function applyStatusRules_(sheet, column) {
 }
 
 function applyKoreanStatusRules_(sheet, column) {
-  const statusRange = sheet.getRange(2, column, Math.max(sheet.getMaxRows() - 1, 1), 1);
+  const startRow = getDataStartRow_(sheet);
+  const statusRange = sheet.getRange(startRow, column, Math.max(sheet.getMaxRows() - startRow + 1, 1), 1);
   const otherRules = sheet.getConditionalFormatRules().filter(rule =>
     !rule.getRanges().some(range => range.getColumn() === column && range.getNumColumns() === 1)
   );
@@ -733,7 +779,10 @@ function formatTable_(sheet, headers, widths) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
   }
 
-  sheet.getRange(1, 1, 1, headers.length)
+  const dataStartRow = getDataStartRow_(sheet);
+  const headerRow = Math.max(dataStartRow - 1, 1);
+
+  sheet.getRange(headerRow, 1, 1, headers.length)
     .setValues([headers])
     .setBackground("#f1f3f4")
     .setFontColor("#202124")
@@ -741,24 +790,28 @@ function formatTable_(sheet, headers, widths) {
     .setHorizontalAlignment("center")
     .setVerticalAlignment("middle")
     .setWrap(true);
-  sheet.setFrozenRows(1);
-  sheet.setRowHeight(1, 40);
+  sheet.setFrozenRows(headerRow);
+  sheet.setRowHeight(headerRow, 40);
 
   widths.forEach((width, index) => sheet.setColumnWidth(index + 1, width));
 
-  if (sheet.getLastRow() > 1) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length)
+  const bodyRowCount = getDataRowCount_(sheet, dataStartRow);
+  if (bodyRowCount) {
+    sheet.getRange(dataStartRow, 1, bodyRowCount, headers.length)
       .setVerticalAlignment("middle")
       .setWrap(true);
   }
 
   const filter = sheet.getFilter();
-  if (filter && filter.getRange().getNumColumns() !== headers.length) {
+  if (filter && (
+    filter.getRange().getNumColumns() !== headers.length ||
+    filter.getRange().getRow() !== headerRow
+  )) {
     filter.remove();
   }
   if (!sheet.getFilter() && sheet.getLastRow() > 1) {
     try {
-      sheet.getRange(1, 1, sheet.getLastRow(), headers.length).createFilter();
+      sheet.getRange(headerRow, 1, sheet.getLastRow() - headerRow + 1, headers.length).createFilter();
     } catch (error) {
       // Google Sheets "Tables" already provide their own filter controls.
       // Creating a basic filter over the same cells throws an overlap error,
@@ -768,6 +821,46 @@ function formatTable_(sheet, headers, widths) {
       );
     }
   }
+}
+
+function getDataStartRow_(sheet) {
+  if (!sheet) return 2;
+  const scanRowCount = Math.min(Math.max(sheet.getLastRow(), 1), 20);
+  const firstColumn = sheet.getRange(1, 1, scanRowCount, 1).getDisplayValues();
+  let firstOrderRow = 0;
+  let lastHeaderRow = 0;
+
+  firstColumn.forEach((row, index) => {
+    const rowNumber = index + 1;
+    const value = String(row[0] || "").trim();
+    if (!firstOrderRow && isOrderId_(value)) firstOrderRow = rowNumber;
+    if ((!firstOrderRow || rowNumber < firstOrderRow) && isOrderHeader_(value)) {
+      lastHeaderRow = rowNumber;
+    }
+  });
+
+  if (lastHeaderRow) return lastHeaderRow + 1;
+  if (firstOrderRow) return firstOrderRow;
+  return 2;
+}
+
+function getDataRowCount_(sheet, startRow) {
+  if (!sheet) return 0;
+  return Math.max(sheet.getLastRow() - startRow + 1, 0);
+}
+
+function isOrderId_(value) {
+  return /^TS-\d{8}-[A-Z0-9]{1,10}$/i.test(String(value || "").trim());
+}
+
+function isOrderHeader_(value) {
+  const normalized = String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return normalized === "ma don" || normalized === "order id" || normalized === "주문번호";
 }
 
 function jsonResponse_(data) {
