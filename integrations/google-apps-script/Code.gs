@@ -627,7 +627,16 @@ function formatTable_(sheet, headers, widths) {
     filter.remove();
   }
   if (!sheet.getFilter() && sheet.getLastRow() > 1) {
-    sheet.getRange(1, 1, sheet.getLastRow(), headers.length).createFilter();
+    try {
+      sheet.getRange(1, 1, sheet.getLastRow(), headers.length).createFilter();
+    } catch (error) {
+      // Google Sheets "Tables" already provide their own filter controls.
+      // Creating a basic filter over the same cells throws an overlap error,
+      // but it must not prevent the remaining sheets from being configured.
+      console.log(
+        `Skipped basic filter on "${sheet.getName()}": ${error.message}`
+      );
+    }
   }
 }
 
