@@ -9,15 +9,15 @@
   if (!form || !input || !message || !results) return;
 
   const statusLabels = {
-    "Mới": "신규 접수",
-    "Đã xác nhận": "주문 확인",
-    "Đang thiết kế": "디자인 진행",
-    "Đang sản xuất": "제작 중",
-    "Đang giao": "배송 중",
-    "Hoàn thành": "완료",
-    "Đã hủy": "취소",
+    NEW: "신규 접수",
+    CONFIRMED: "주문 확인",
+    DESIGNING: "디자인 진행",
+    PRODUCTION: "제작 중",
+    SHIPPING: "배송 중",
+    COMPLETED: "완료",
+    CANCELLED: "취소",
   };
-  const progressStatuses = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành"];
+  const progressStatuses = ["NEW", "CONFIRMED", "DESIGNING", "PRODUCTION", "SHIPPING", "COMPLETED"];
 
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
     "&": "&amp;",
@@ -81,9 +81,9 @@
     message.textContent = translations[error.message] || error.message || "주문을 조회할 수 없습니다.";
   }
 
-  function statusSteps(status) {
-    if (status === "Đã hủy") return `<div class="status-badge cancelled">취소된 주문입니다</div>`;
-    const activeIndex = Math.max(0, progressStatuses.indexOf(status));
+  function statusSteps(statusKey) {
+    if (statusKey === "CANCELLED") return `<div class="status-badge cancelled">취소된 주문입니다</div>`;
+    const activeIndex = Math.max(0, progressStatuses.indexOf(statusKey));
     return `<div class="status-steps">${progressStatuses.map((item, index) => `
       <div class="status-step ${index < activeIndex ? "done" : index === activeIndex ? "current" : ""}">
         ${escapeHtml(statusLabels[item])}
@@ -95,7 +95,8 @@
   }
 
   function orderCard(order) {
-    const cancelled = order.status === "Đã hủy";
+    const cancelled = order.statusKey === "CANCELLED";
+    const customerMessage = String(order.customerMessage || "").trim();
     return `<article class="tracking-order">
       <div class="order-head">
         <div>
@@ -105,7 +106,7 @@
             <button class="copy-code" type="button" data-copy-order="${escapeHtml(order.orderId)}">복사</button>
           </div>
         </div>
-        <span class="status-badge ${cancelled ? "cancelled" : ""}">${escapeHtml(statusLabels[order.status] || order.status)}</span>
+        <span class="status-badge ${cancelled ? "cancelled" : ""}">${escapeHtml(order.status || statusLabels[order.statusKey] || "-")}</span>
       </div>
       <div class="order-meta">
         <div><span>주문 일시 (베트남 시간)</span><strong>${escapeHtml(order.placedAt || "-")}</strong></div>
@@ -113,7 +114,9 @@
         <div><span>주문 금액</span><strong>${formatPrice(order.totalPrice)}</strong></div>
       </div>
       <p class="order-summary">${escapeHtml(order.summary || "상품 정보 확인 중")}</p>
-      ${statusSteps(order.status)}
+      <div class="order-notice"><strong>현재 진행 안내</strong><p>${escapeHtml(order.defaultMessage || "주문 진행 상황을 확인하고 있습니다.")}</p></div>
+      ${customerMessage ? `<div class="customer-notice"><strong>TEAMSPIRIT 고객 안내</strong><p>${escapeHtml(customerMessage)}</p></div>` : ""}
+      ${statusSteps(order.statusKey)}
     </article>`;
   }
 

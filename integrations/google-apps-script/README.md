@@ -21,3 +21,5 @@ After pasting a new `Code.gs` version:
 1. Select `setupOrderSheets` in the function menu.
 2. Click **Run** and approve the requested spreadsheet/trigger permissions.
 3. The function repairs headers and dropdowns, normalizes legacy design values, and installs the edit trigger that keeps order status synchronized between `Đơn hàng` and `Chi tiết sản phẩm`.
+
+The same setup also creates `Tra cứu vận đơn`, a Korean-language customer tracking tab. Column `고객 안내 메시지 (직접 입력)` is reserved for staff-written customer notices and is preserved when order status changes. The public lookup page reads only this tracking tab and never exposes the internal Vietnamese management columns.
