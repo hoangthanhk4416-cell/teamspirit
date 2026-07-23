@@ -9,6 +9,8 @@
   ];
   const contacts = ["Instagram","KakaoTalk","Điện thoại"];
   let selectedProduct = null;
+  let cartOrderItems = [];
+  let orderMode = "single";
   let currentStep = 1;
 
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
@@ -79,6 +81,10 @@
   }
 
   function renderStepOne() {
+    if (orderMode === "cart") {
+      renderCartStepOne();
+      return;
+    }
     currentStep = 1;
     const body = document.getElementById("tsOrderBody");
     const existingSize = normalizeSize(document.querySelector(".product-size.active")?.dataset.size || "");
@@ -102,6 +108,7 @@
   }
 
   function collectStepOne() {
+    if (orderMode === "cart") return collectCartStepOne();
     const size = normalizeSize(document.getElementById("tsSize").value);
     const colorSelect = document.getElementById("tsColor");
     const color = colorSelect.value;
@@ -125,14 +132,79 @@
     return true;
   }
 
+  function renderCartStepOne() {
+    currentStep = 1;
+    const body = document.getElementById("tsOrderBody");
+    body.innerHTML = `${progress(1)}
+      <div class="ts-cart-order-list">
+        ${cartOrderItems.map((item, index) => `
+          <article class="ts-cart-order-item">
+            <div class="ts-order-product">
+              <img src="${escapeHtml(item.image)}" alt="">
+              <div><strong>${escapeHtml(item.name)}</strong><span><span translate="no">${escapeHtml(normalizeSize(item.size))}</span> · ${escapeHtml(item.quantity)}개</span></div>
+            </div>
+            <div class="ts-order-field">
+              <label for="tsCartColor${index}">색상 *</label>
+              <select id="tsCartColor${index}" data-cart-color="${index}" required>
+                <option value="">색상 선택</option>
+                ${colors.map(color => `<option value="${escapeHtml(color.value)}">${escapeHtml(color.label)}</option>`).join("")}
+              </select>
+            </div>
+          </article>`).join("")}
+      </div>
+      <div class="ts-order-grid">
+        <div class="ts-order-field"><label for="tsJerseyNumber">등번호</label><input id="tsJerseyNumber" maxlength="3" placeholder="예: 10"></div>
+        <div class="ts-order-field"><label for="tsPrintName">마킹 이름</label><input id="tsPrintName" maxlength="30" placeholder="이름 또는 문구 입력"></div>
+        <div class="ts-order-field full"><label for="tsDesignRequest">제작 요청사항</label><textarea id="tsDesignRequest" maxlength="1000" placeholder="원하는 변경 사항을 입력하거나 Instagram 또는 KakaoTalk에서 상담받을 수 있습니다."></textarea></div>
+      </div>
+      <p class="ts-order-note">각 상품의 색상을 선택해 주세요. 제작 전 TEAMSPIRIT 담당자가 디자인, 최종 금액과 제작 일정을 확인해 드립니다.</p>
+      <p class="ts-order-status" id="tsOrderStatus" role="status" aria-live="polite"></p>`;
+    document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-secondary" type="button" data-action="cancel">취소</button><button class="ts-order-primary" type="button" data-action="continue">주문 계속하기</button>`;
+    bindActions();
+  }
+
+  function collectCartStepOne() {
+    const printName = document.getElementById("tsPrintName").value.trim();
+    const jerseyNumber = document.getElementById("tsJerseyNumber").value.trim();
+    const designRequest = document.getElementById("tsDesignRequest").value.trim();
+    let valid = true;
+    cartOrderItems = cartOrderItems.map((item, index) => {
+      const colorSelect = document.querySelector(`[data-cart-color="${index}"]`);
+      const color = colorSelect?.value || "";
+      if (!color) valid = false;
+      return {
+        ...item,
+        size: normalizeSize(item.size),
+        color,
+        colorLabel: colorSelect?.selectedOptions[0]?.textContent || color,
+        printName,
+        jerseyNumber,
+        designRequest,
+        unitPrice: numericPrice(item.price),
+      };
+    });
+    if (!valid) {
+      document.getElementById("tsOrderStatus").textContent = "모든 상품의 색상을 선택해 주세요.";
+      return false;
+    }
+    return true;
+  }
+
   function renderStepTwo() {
     if (!collectStepOne()) return;
     currentStep = 2;
+    const productSummary = orderMode === "cart"
+      ? `<div class="ts-cart-order-review">${cartOrderItems.map(item => `
+          <div class="ts-order-product">
+            <img src="${escapeHtml(item.image)}" alt="">
+            <div><strong>${escapeHtml(item.name)}</strong><span><span translate="no">${escapeHtml(item.size)}</span> · ${escapeHtml(item.colorLabel || item.color)} · ${item.quantity}개</span></div>
+          </div>`).join("")}</div>`
+      : `<div class="ts-order-product">
+          <img src="${escapeHtml(selectedProduct.image)}" alt="">
+          <div><strong>${escapeHtml(selectedProduct.name)}</strong><span><span translate="no">${escapeHtml(selectedProduct.size)}</span> · ${escapeHtml(selectedProduct.colorLabel || selectedProduct.color)} · ${selectedProduct.quantity}개</span></div>
+        </div>`;
     document.getElementById("tsOrderBody").innerHTML = `${progress(2)}
-      <div class="ts-order-product">
-        <img src="${escapeHtml(selectedProduct.image)}" alt="">
-        <div><strong>${escapeHtml(selectedProduct.name)}</strong><span><span translate="no">${escapeHtml(selectedProduct.size)}</span> · ${escapeHtml(selectedProduct.colorLabel || selectedProduct.color)} · ${selectedProduct.quantity}개</span></div>
-      </div>
+      ${productSummary}
       <div class="ts-order-grid">
         <div class="ts-order-field"><label for="tsCustomerName">주문자 이름 *</label><input id="tsCustomerName" autocomplete="name" maxlength="80" required></div>
         <div class="ts-order-field"><label for="tsPhone">전화번호 *</label><input id="tsPhone" type="tel" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="010-0000-0000" required></div>
@@ -155,7 +227,7 @@
     }
     return {
       name,
-      phone,
+      phone: normalizedPhone,
       address: !address ? "Không cung cấp" : address.length < 8 ? `${address} (địa chỉ ngắn)` : address,
       contactChannel: document.getElementById("tsContactChannel").value || "Không yêu cầu",
     };
@@ -172,14 +244,15 @@
     button.disabled = true;
     button.textContent = "전송 중...";
     const orderId = `TS-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase().slice(0,6)}`;
+    const orderItems = orderMode === "cart" ? cartOrderItems : [selectedProduct];
     const payload = {
       orderId,
       submittedAt: new Date().toISOString(),
       customer,
-      items: [{
-        ...selectedProduct,
-        lineTotal: selectedProduct.unitPrice * selectedProduct.quantity,
-      }],
+      items: orderItems.map(item => ({
+        ...item,
+        lineTotal: item.unitPrice * item.quantity,
+      })),
       source: "Website",
       pageUrl: location.href,
       userAgent: navigator.userAgent,
@@ -192,6 +265,10 @@
       });
       const result = await response.json();
       if (!response.ok || result.ok !== true) throw new Error(result.error || "주문을 저장할 수 없습니다");
+      if (orderMode === "cart") {
+        localStorage.removeItem("teamspirit_cart_v1");
+        window.dispatchEvent(new CustomEvent("teamspirit:cart-order-success"));
+      }
       document.getElementById("tsOrderBody").innerHTML = `<div class="ts-order-success"><div class="ts-order-success-mark">✓</div><h3>주문이 접수되었습니다</h3><p>아래 주문번호로 제작 및 배송 상태를 확인할 수 있습니다.</p><div class="ts-order-code"><strong>${escapeHtml(orderId)}</strong><button type="button" data-action="copy-order" data-order-id="${escapeHtml(orderId)}">주문번호 복사</button></div><p>TEAMSPIRIT 담당자가 디자인과 배송 정보를 확인하기 위해 연락드리겠습니다.</p></div>`;
       document.getElementById("tsOrderActions").innerHTML = `<button class="ts-order-secondary" type="button" data-action="done">닫기</button><button class="ts-order-primary" type="button" data-action="track-order" data-order-id="${escapeHtml(orderId)}">주문 조회하기</button>`;
       bindActions();
@@ -236,11 +313,60 @@
   function openModal(product) {
     if (!product?.id) return;
     ensureModal();
+    orderMode = "single";
+    cartOrderItems = [];
     selectedProduct = product;
     document.getElementById("tsOrderModal").hidden = false;
     document.body.style.overflow = "hidden";
     renderStepOne();
   }
+
+  function storedCartProducts() {
+    let storedItems = [];
+    try {
+      storedItems = JSON.parse(localStorage.getItem("teamspirit_cart_v1")) || [];
+    } catch (_error) {
+      storedItems = [];
+    }
+    const catalog = Array.isArray(window.SITE_DATA?.products) ? window.SITE_DATA.products : [];
+    const detailProduct = currentProduct();
+    return storedItems.map(item => {
+      const product = catalog.find(entry => entry.id === item.id)
+        || (detailProduct?.id === item.id ? detailProduct : null)
+        || {};
+      return {
+        id: item.id,
+        name: product.name || item.name || item.id,
+        price: product.price || item.price || "",
+        image: product.image || item.image || "",
+        url: product.url || item.url || `${location.origin}/products/${item.id}/`,
+        size: normalizeSize(item.size),
+        quantity: Math.max(1, Number(item.quantity) || 1),
+      };
+    }).filter(item => item.id && item.size);
+  }
+
+  function openCartOrder(items) {
+    const preparedItems = Array.isArray(items) ? items.filter(item => item?.id && item?.size) : [];
+    if (!preparedItems.length) {
+      window.showFloatingToast?.("장바구니가 비어 있습니다.");
+      return;
+    }
+    ensureModal();
+    orderMode = "cart";
+    selectedProduct = null;
+    cartOrderItems = preparedItems.map(item => ({ ...item }));
+    ["cartModal", "seoCartModal"].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal) modal.hidden = true;
+    });
+    document.getElementById("tsOrderModal").hidden = false;
+    document.body.style.overflow = "hidden";
+    renderStepOne();
+  }
+
+  window.openTeamspiritCartOrder = openCartOrder;
+  window.openTeamspiritStoredCartOrder = () => openCartOrder(storedCartProducts());
 
   function closeModal() {
     const modal = document.getElementById("tsOrderModal");
@@ -274,6 +400,15 @@
         openModal(productFromCard(card));
       });
       card.appendChild(button);
+    });
+    document.querySelectorAll(".seo-cart-panel .contact-order-actions").forEach(actions => {
+      if (actions.querySelector(".ts-cart-checkout")) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ts-cart-checkout";
+      button.textContent = "주문하기";
+      button.addEventListener("click", window.openTeamspiritStoredCartOrder);
+      actions.insertBefore(button, actions.firstChild);
     });
   }
 

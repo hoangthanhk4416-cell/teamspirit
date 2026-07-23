@@ -30,7 +30,9 @@
   function lookupParameters(value) {
     const text = String(value || "").trim();
     if (/^TS-/i.test(text)) return { orderId: text.toUpperCase() };
-    const phone = text.replace(/\D/g, "");
+    let phone = text.replace(/\D/g, "");
+    if (/^82\d{9,10}$/.test(phone)) phone = `0${phone.slice(2)}`;
+    if (!phone.startsWith("0") && /^\d{9,10}$/.test(phone)) phone = `0${phone}`;
     return phone ? { phone } : {};
   }
 

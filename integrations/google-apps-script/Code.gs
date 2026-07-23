@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v11";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v12";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Màu sắc tùy chỉnh"];
 const KOREAN_STATUS = {
@@ -52,6 +52,7 @@ function doPost(event) {
     lock.waitLock(10000);
     const payload = JSON.parse((event && event.postData && event.postData.contents) || "{}");
     validatePayload_(payload);
+    const customerPhone = normalizeStoredPhone_(payload.customer.phone);
 
     const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
     ensureSheetLayout_(spreadsheet);
@@ -73,7 +74,7 @@ function doPost(event) {
       new Date(),
       "Mới",
       safe_(payload.customer.name),
-      safe_(payload.customer.phone),
+      safe_(customerPhone),
       safe_(payload.customer.address || "Không cung cấp"),
       safe_(payload.customer.contactChannel || "Không yêu cầu"),
       safe_(contactRequest),
@@ -85,6 +86,7 @@ function doPost(event) {
       safe_(payload.userAgent),
     ]);
     const orderRow = ordersSheet.getLastRow();
+    ordersSheet.getRange(orderRow, 5).setNumberFormat("@").setValue(customerPhone);
     ordersSheet.getRange(orderRow, 2).setNumberFormat("dd/MM/yyyy HH:mm:ss");
     ordersSheet.getRange(orderRow, 9).setNumberFormat("0");
     ordersSheet.getRange(orderRow, 10).setNumberFormat('#,##0" ₩"');
@@ -125,7 +127,7 @@ function doPost(event) {
       summary,
       totalQuantity,
       totalPrice,
-      phone: payload.customer.phone,
+      phone: customerPhone,
     });
 
     return jsonResponse_({ ok: true, orderId: payload.orderId });
@@ -141,7 +143,7 @@ function validatePayload_(payload) {
     throw new Error("Dữ liệu đơn hàng không hợp lệ");
   }
   if (String(payload.customer.name || "").trim().length < 2) throw new Error("Thiếu tên khách hàng");
-  if (!/^0\d{8,10}$/.test(String(payload.customer.phone || "").replace(/\D/g, ""))) {
+  if (!/^0\d{8,10}$/.test(normalizeStoredPhone_(payload.customer.phone))) {
     throw new Error("Số điện thoại không hợp lệ");
   }
   if (payload.items.length > 50) throw new Error("Đơn hàng có quá nhiều dòng sản phẩm");
@@ -150,9 +152,10 @@ function validatePayload_(payload) {
 function lookupOrders_(parameters) {
   const orderId = String(parameters.orderId || "").trim().toUpperCase();
   const phone = String(parameters.phone || "").replace(/\D/g, "");
+  const phoneKey = phoneLookupKey_(phone);
   if (!orderId && !phone) throw new Error("Vui lòng nhập mã đơn hàng hoặc số điện thoại");
   if (orderId && !/^TS-\d{8}-[A-Z0-9]{1,10}$/.test(orderId)) throw new Error("Mã đơn hàng không đúng định dạng");
-  if (phone && !/^0\d{8,10}$/.test(phone)) throw new Error("Số điện thoại không đúng định dạng");
+  if (phone && !/^\d{8,12}$/.test(phone)) throw new Error("Số điện thoại không đúng định dạng");
 
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   spreadsheet.setSpreadsheetTimeZone(VIETNAM_TIME_ZONE);
@@ -163,8 +166,8 @@ function lookupOrders_(parameters) {
   const matches = values
     .filter(row => {
       const rowOrderId = String(row[0] || "").trim().toUpperCase();
-      const rowPhone = String(row[8] || "").replace(/\D/g, "");
-      return orderId ? rowOrderId === orderId : rowPhone === phone;
+      const rowPhoneKey = phoneLookupKey_(row[8]);
+      return orderId ? rowOrderId === orderId : Boolean(rowPhoneKey) && rowPhoneKey === phoneKey;
     })
     .slice(-10)
     .reverse()
@@ -190,9 +193,20 @@ function lookupOrders_(parameters) {
 }
 
 function maskPhone_(value) {
-  const phone = String(value || "").replace(/\D/g, "");
+  const phone = normalizeStoredPhone_(value);
   if (phone.length < 7) return "";
   return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+
+function normalizeStoredPhone_(value) {
+  let phone = String(value || "").replace(/\D/g, "");
+  if (/^82\d{9,10}$/.test(phone)) phone = `0${phone.slice(2)}`;
+  if (!phone.startsWith("0") && /^\d{9,10}$/.test(phone)) phone = `0${phone}`;
+  return phone;
+}
+
+function phoneLookupKey_(value) {
+  return normalizeStoredPhone_(value).replace(/^0+/, "");
 }
 
 function publicResponse_(data, callback) {
@@ -286,6 +300,9 @@ function ensureSheetLayout_(spreadsheet) {
 
   if (ordersSheet.getLastRow() > 1) {
     ordersSheet.getRange(2, 2, ordersSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    safeSheetOperation_("format orders phone as text", () =>
+      ordersSheet.getRange(2, 5, ordersSheet.getLastRow() - 1, 1).setNumberFormat("@")
+    );
     ordersSheet.getRange(2, 9, ordersSheet.getLastRow() - 1, 1).setNumberFormat("0");
     ordersSheet.getRange(2, 10, ordersSheet.getLastRow() - 1, 1).setNumberFormat('#,##0" ₩"');
   }
@@ -308,6 +325,9 @@ function ensureSheetLayout_(spreadsheet) {
     safeSheetOperation_("format tracking amount", () =>
       trackingSheet.getRange(2, 8, trackingRowCount, 1).setNumberFormat('#,##0" ₩"')
     );
+    safeSheetOperation_("format tracking phone as text", () =>
+      trackingSheet.getRange(2, 9, trackingRowCount, 1).setNumberFormat("@")
+    );
     safeSheetOperation_("format tracking update time", () =>
       trackingSheet.getRange(2, 10, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
     );
@@ -315,6 +335,7 @@ function ensureSheetLayout_(spreadsheet) {
 
   normalizeExistingDesignChoices_(itemsSheet);
   normalizeExistingSizes_(ordersSheet, itemsSheet);
+  normalizeExistingPhones_(ordersSheet, trackingSheet);
   syncAllStatuses_(ordersSheet, itemsSheet);
   syncTrackingSheet_(ordersSheet, trackingSheet);
   safeSheetOperation_("orders status dropdown", () => applyDropdown_(ordersSheet, 3, ORDER_STATUSES));
@@ -495,6 +516,7 @@ function syncTrackingSheet_(ordersSheet, trackingSheet) {
     trackingSheet.getRange(2, 1, trackingSheet.getMaxRows() - 1, 10).clearContent();
   }
   if (rows.length) {
+    trackingSheet.getRange(2, 9, rows.length, 1).setNumberFormat("@");
     trackingSheet.getRange(2, 1, rows.length, 10)
       .setValues(rows)
       .setVerticalAlignment("middle")
@@ -522,6 +544,7 @@ function upsertTrackingOrder_(trackingSheet, order) {
     .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1);
   const row = matches.length ? matches[0].getRow() : trackingSheet.getLastRow() + 1;
   const customerMessage = matches.length ? String(trackingSheet.getRange(row, 5).getValue() || "") : "";
+  trackingSheet.getRange(row, 9).setNumberFormat("@");
   trackingSheet.getRange(row, 1, 1, 10).setValues([[
     String(order.orderId || ""),
     order.placedAt || new Date(),
@@ -531,12 +554,13 @@ function upsertTrackingOrder_(trackingSheet, order) {
     koreanSummary_(order.summary),
     Number(order.totalQuantity || 0),
     Number(order.totalPrice || 0),
-    String(order.phone || ""),
+    normalizeStoredPhone_(order.phone),
     new Date(),
   ]]).setVerticalAlignment("middle").setWrap(true);
   trackingSheet.getRange(row, 2).setNumberFormat("dd/MM/yyyy HH:mm:ss");
   trackingSheet.getRange(row, 7).setNumberFormat("0");
   trackingSheet.getRange(row, 8).setNumberFormat('#,##0" ₩"');
+  trackingSheet.getRange(row, 9).setNumberFormat("@").setValue(normalizeStoredPhone_(order.phone));
   trackingSheet.getRange(row, 10).setNumberFormat("dd/MM/yyyy HH:mm:ss");
 }
 
@@ -630,6 +654,19 @@ function normalizeExistingDesignChoices_(itemsSheet) {
   const range = itemsSheet.getRange(2, 6, itemsSheet.getLastRow() - 1, 1);
   const values = range.getDisplayValues().map(row => [normalizeColor_(row[0])]);
   range.setValues(values);
+}
+
+function normalizeExistingPhones_(ordersSheet, trackingSheet) {
+  [
+    { sheet: ordersSheet, column: 5 },
+    { sheet: trackingSheet, column: 9 },
+  ].forEach(target => {
+    if (!target.sheet || target.sheet.getLastRow() < 2) return;
+    const range = target.sheet.getRange(2, target.column, target.sheet.getLastRow() - 1, 1);
+    const values = range.getDisplayValues().map(row => [normalizeStoredPhone_(row[0])]);
+    range.setNumberFormat("@");
+    range.setValues(values);
+  });
 }
 
 function applyDropdown_(sheet, column, choices) {
