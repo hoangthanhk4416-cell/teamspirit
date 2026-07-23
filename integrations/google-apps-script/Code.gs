@@ -6,7 +6,15 @@ const SHEET_LAYOUT_VERSION = "2026-07-23-v3";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 
-function doGet() {
+function doGet(event) {
+  const parameters = (event && event.parameter) || {};
+  if (parameters.mode === "lookup") {
+    try {
+      return publicResponse_(lookupOrders_(parameters), parameters.callback);
+    } catch (error) {
+      return publicResponse_({ ok: false, error: error.message }, parameters.callback);
+    }
+  }
   return jsonResponse_({ ok: true, service: "TEAMSPIRIT order intake" });
 }
 
@@ -94,6 +102,58 @@ function validatePayload_(payload) {
     throw new Error("Số điện thoại không hợp lệ");
   }
   if (payload.items.length > 50) throw new Error("Đơn hàng có quá nhiều dòng sản phẩm");
+}
+
+function lookupOrders_(parameters) {
+  const orderId = String(parameters.orderId || "").trim().toUpperCase();
+  const phone = String(parameters.phone || "").replace(/\D/g, "");
+  if (!orderId && !phone) throw new Error("Vui lòng nhập mã đơn hàng hoặc số điện thoại");
+  if (orderId && !/^TS-\d{8}-[A-Z0-9]{1,10}$/.test(orderId)) throw new Error("Mã đơn hàng không đúng định dạng");
+  if (phone && !/^0\d{8,10}$/.test(phone)) throw new Error("Số điện thoại không đúng định dạng");
+
+  const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+  spreadsheet.setSpreadsheetTimeZone(VIETNAM_TIME_ZONE);
+  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
+  if (!ordersSheet || ordersSheet.getLastRow() < 2) return { ok: true, orders: [] };
+
+  const values = ordersSheet.getRange(2, 1, ordersSheet.getLastRow() - 1, 11).getValues();
+  const matches = values
+    .filter(row => {
+      const rowOrderId = String(row[0] || "").trim().toUpperCase();
+      const rowPhone = String(row[4] || "").replace(/\D/g, "");
+      return orderId ? rowOrderId === orderId : rowPhone === phone;
+    })
+    .slice(-10)
+    .reverse()
+    .map(row => ({
+      orderId: String(row[0] || ""),
+      placedAt: row[1] instanceof Date
+        ? Utilities.formatDate(row[1], VIETNAM_TIME_ZONE, "dd/MM/yyyy HH:mm:ss")
+        : String(row[1] || ""),
+      status: ORDER_STATUSES.includes(String(row[2] || "")) ? String(row[2]) : "Mới",
+      totalQuantity: Number(row[8] || 0),
+      totalPrice: Number(row[9] || 0),
+      summary: String(row[10] || ""),
+      phoneHint: maskPhone_(row[4]),
+    }));
+
+  return { ok: true, orders: matches };
+}
+
+function maskPhone_(value) {
+  const phone = String(value || "").replace(/\D/g, "");
+  if (phone.length < 7) return "";
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+}
+
+function publicResponse_(data, callback) {
+  const callbackName = String(callback || "");
+  if (/^[A-Za-z_$][0-9A-Za-z_$]{0,80}$/.test(callbackName)) {
+    return ContentService
+      .createTextOutput(`${callbackName}(${JSON.stringify(data)});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return jsonResponse_(data);
 }
 
 function safe_(value) {
