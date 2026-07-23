@@ -1,10 +1,38 @@
 const SPREADSHEET_ID = "1AtQo4vi6nlYV3yzRPUit0iiJTmvgllGplSSfgl1aigU";
 const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
+const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-23-v3";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v4";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
+const KOREAN_STATUS = {
+  "Mới": "신규 접수",
+  "Đã xác nhận": "주문 확인",
+  "Đang thiết kế": "디자인 진행",
+  "Đang sản xuất": "제작 중",
+  "Đang giao": "배송 중",
+  "Hoàn thành": "완료",
+  "Đã hủy": "취소",
+};
+const STATUS_KEY = {
+  "Mới": "NEW",
+  "Đã xác nhận": "CONFIRMED",
+  "Đang thiết kế": "DESIGNING",
+  "Đang sản xuất": "PRODUCTION",
+  "Đang giao": "SHIPPING",
+  "Hoàn thành": "COMPLETED",
+  "Đã hủy": "CANCELLED",
+};
+const KOREAN_NOTICE = {
+  "Mới": "주문이 정상적으로 접수되었습니다. 담당자가 주문 내용을 확인하고 있습니다.",
+  "Đã xác nhận": "주문 내용을 확인했습니다. 디자인 및 제작 준비를 진행하고 있습니다.",
+  "Đang thiết kế": "요청하신 내용을 바탕으로 디자인 시안을 준비하고 있습니다.",
+  "Đang sản xuất": "디자인 확인이 완료되어 상품을 제작하고 있습니다.",
+  "Đang giao": "제작이 완료되어 배송이 진행 중입니다.",
+  "Hoàn thành": "배송이 완료되었습니다. TEAMSPIRIT를 이용해 주셔서 감사합니다.",
+  "Đã hủy": "주문이 취소되었습니다. 자세한 내용은 고객 안내 메시지를 확인하거나 문의해 주세요.",
+};
 
 function doGet(event) {
   const parameters = (event && event.parameter) || {};
@@ -85,6 +113,17 @@ function doPost(event) {
       itemsSheet.getRange(firstItemRow, 8, itemRows.length, 2).setNumberFormat('#,##0" ₩"');
     }
 
+    const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
+    upsertTrackingOrder_(trackingSheet, {
+      orderId: payload.orderId,
+      placedAt: ordersSheet.getRange(orderRow, 2).getValue(),
+      status: "Mới",
+      summary,
+      totalQuantity,
+      totalPrice,
+      phone: payload.customer.phone,
+    });
+
     return jsonResponse_({ ok: true, orderId: payload.orderId });
   } catch (error) {
     return jsonResponse_({ ok: false, error: error.message });
@@ -113,29 +152,35 @@ function lookupOrders_(parameters) {
 
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   spreadsheet.setSpreadsheetTimeZone(VIETNAM_TIME_ZONE);
-  const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
-  if (!ordersSheet || ordersSheet.getLastRow() < 2) return { ok: true, orders: [] };
+  const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
+  if (!trackingSheet || trackingSheet.getLastRow() < 2) return { ok: true, orders: [] };
 
-  const values = ordersSheet.getRange(2, 1, ordersSheet.getLastRow() - 1, 11).getValues();
+  const values = trackingSheet.getRange(2, 1, trackingSheet.getLastRow() - 1, 10).getValues();
   const matches = values
     .filter(row => {
       const rowOrderId = String(row[0] || "").trim().toUpperCase();
-      const rowPhone = String(row[4] || "").replace(/\D/g, "");
+      const rowPhone = String(row[8] || "").replace(/\D/g, "");
       return orderId ? rowOrderId === orderId : rowPhone === phone;
     })
     .slice(-10)
     .reverse()
-    .map(row => ({
-      orderId: String(row[0] || ""),
-      placedAt: row[1] instanceof Date
-        ? Utilities.formatDate(row[1], VIETNAM_TIME_ZONE, "dd/MM/yyyy HH:mm:ss")
-        : String(row[1] || ""),
-      status: ORDER_STATUSES.includes(String(row[2] || "")) ? String(row[2]) : "Mới",
-      totalQuantity: Number(row[8] || 0),
-      totalPrice: Number(row[9] || 0),
-      summary: String(row[10] || ""),
-      phoneHint: maskPhone_(row[4]),
-    }));
+    .map(row => {
+      const internalStatus = internalStatusFromKorean_(row[2]);
+      return {
+        orderId: String(row[0] || ""),
+        placedAt: row[1] instanceof Date
+          ? Utilities.formatDate(row[1], VIETNAM_TIME_ZONE, "dd/MM/yyyy HH:mm:ss")
+          : String(row[1] || ""),
+        status: KOREAN_STATUS[internalStatus],
+        statusKey: STATUS_KEY[internalStatus],
+        defaultMessage: String(row[3] || KOREAN_NOTICE[internalStatus]),
+        customerMessage: String(row[4] || ""),
+        summary: String(row[5] || ""),
+        totalQuantity: Number(row[6] || 0),
+        totalPrice: Number(row[7] || 0),
+        phoneHint: maskPhone_(row[8]),
+      };
+    });
 
   return { ok: true, orders: matches };
 }
@@ -186,6 +231,7 @@ function ensureSheetLayout_(spreadsheet) {
 
   const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
   const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
+  const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET) || spreadsheet.insertSheet(TRACKING_SHEET);
   if (!ordersSheet || !itemsSheet) throw new Error("Không tìm thấy tab nhận đơn");
 
   const orderHeaders = [
@@ -220,9 +266,22 @@ function ensureSheetLayout_(spreadsheet) {
     "Trang sản phẩm",
     "Trạng thái",
   ];
+  const trackingHeaders = [
+    "주문번호",
+    "주문일시 (베트남 시간)",
+    "진행상태",
+    "기본 진행 안내",
+    "고객 안내 메시지 (직접 입력)",
+    "상품정보",
+    "수량",
+    "주문금액",
+    "조회 전화번호",
+    "최종 업데이트",
+  ];
 
   formatTable_(ordersSheet, orderHeaders, [140, 180, 110, 160, 130, 230, 120, 280, 100, 120, 320, 220, 100, 260]);
   formatTable_(itemsSheet, itemHeaders, [140, 55, 120, 240, 100, 190, 90, 120, 120, 280, 130, 80, 260, 120]);
+  formatTable_(trackingSheet, trackingHeaders, [155, 180, 120, 340, 340, 320, 75, 120, 135, 180]);
 
   if (ordersSheet.getLastRow() > 1) {
     ordersSheet.getRange(2, 2, ordersSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
@@ -233,14 +292,23 @@ function ensureSheetLayout_(spreadsheet) {
     itemsSheet.getRange(2, 7, itemsSheet.getLastRow() - 1, 1).setNumberFormat("0");
     itemsSheet.getRange(2, 8, itemsSheet.getLastRow() - 1, 2).setNumberFormat('#,##0" ₩"');
   }
+  if (trackingSheet.getLastRow() > 1) {
+    trackingSheet.getRange(2, 2, trackingSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    trackingSheet.getRange(2, 7, trackingSheet.getLastRow() - 1, 1).setNumberFormat("0");
+    trackingSheet.getRange(2, 8, trackingSheet.getLastRow() - 1, 1).setNumberFormat('#,##0" ₩"');
+    trackingSheet.getRange(2, 10, trackingSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+  }
 
   normalizeExistingDesignChoices_(itemsSheet);
   syncAllStatuses_(ordersSheet, itemsSheet);
+  syncTrackingSheet_(ordersSheet, trackingSheet);
   applyDropdown_(ordersSheet, 3, ORDER_STATUSES);
   applyDropdown_(itemsSheet, 6, DESIGN_CHOICES);
   applyDropdown_(itemsSheet, 14, ORDER_STATUSES);
+  applyDropdown_(trackingSheet, 3, Object.values(KOREAN_STATUS));
   applyStatusRules_(ordersSheet, 3);
   applyStatusRules_(itemsSheet, 14);
+  applyKoreanStatusRules_(trackingSheet, 3);
   properties.setProperty("SHEET_LAYOUT_VERSION", SHEET_LAYOUT_VERSION);
 }
 
@@ -260,25 +328,34 @@ function handleOrderStatusEdit(event) {
   const spreadsheet = sheet.getParent();
   const ordersSheet = spreadsheet.getSheetByName(ORDERS_SHEET);
   const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
-  if (!ordersSheet || !itemsSheet) return;
+  const trackingSheet = spreadsheet.getSheetByName(TRACKING_SHEET);
+  if (!ordersSheet || !itemsSheet || !trackingSheet) return;
 
   const firstColumn = event.range.getColumn();
   const lastColumn = firstColumn + event.range.getNumColumns() - 1;
   const isOrderStatusEdit = sheet.getName() === ORDERS_SHEET && firstColumn <= 3 && lastColumn >= 3;
   const isItemStatusEdit = sheet.getName() === ITEMS_SHEET && firstColumn <= 14 && lastColumn >= 14;
-  if (!isOrderStatusEdit && !isItemStatusEdit) return;
+  const isTrackingStatusEdit = sheet.getName() === TRACKING_SHEET && firstColumn <= 3 && lastColumn >= 3;
+  const isTrackingMessageEdit = sheet.getName() === TRACKING_SHEET && firstColumn <= 5 && lastColumn >= 5;
+  if (!isOrderStatusEdit && !isItemStatusEdit && !isTrackingStatusEdit && !isTrackingMessageEdit) return;
 
-  const statusColumn = isOrderStatusEdit ? 3 : 14;
   const firstRow = event.range.getRow();
   const rowCount = event.range.getNumRows();
+  if (isTrackingMessageEdit && !isTrackingStatusEdit) {
+    trackingSheet.getRange(firstRow, 10, rowCount, 1).setValue(new Date()).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    return;
+  }
+
+  const statusColumn = isOrderStatusEdit || isTrackingStatusEdit ? 3 : 14;
   const orderIds = sheet.getRange(firstRow, 1, rowCount, 1).getDisplayValues();
   const statuses = sheet.getRange(firstRow, statusColumn, rowCount, 1).getDisplayValues();
 
   orderIds.forEach((row, index) => {
     const orderId = String(row[0] || "").trim();
-    const status = String(statuses[index][0] || "").trim();
+    const rawStatus = String(statuses[index][0] || "").trim();
+    const status = isTrackingStatusEdit ? internalStatusFromKorean_(rawStatus) : rawStatus;
     if (orderId && ORDER_STATUSES.includes(status)) {
-      syncOrderStatus_(ordersSheet, itemsSheet, orderId, status);
+      syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status);
     }
   });
 }
@@ -296,7 +373,7 @@ function ensureStatusSyncTrigger_(spreadsheet) {
   }
 }
 
-function syncOrderStatus_(ordersSheet, itemsSheet, orderId, status) {
+function syncOrderStatus_(ordersSheet, itemsSheet, trackingSheet, orderId, status) {
   ordersSheet.createTextFinder(orderId)
     .matchEntireCell(true)
     .findAll()
@@ -308,6 +385,8 @@ function syncOrderStatus_(ordersSheet, itemsSheet, orderId, status) {
     .findAll()
     .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
     .forEach(cell => itemsSheet.getRange(cell.getRow(), 14).setValue(status));
+
+  syncTrackingStatus_(trackingSheet, orderId, status);
 }
 
 function syncAllStatuses_(ordersSheet, itemsSheet) {
@@ -334,6 +413,118 @@ function syncAllStatuses_(ordersSheet, itemsSheet) {
     });
     itemsSheet.getRange(2, 14, rowCount, 1).setValues(statuses);
   }
+}
+
+function syncTrackingSheet_(ordersSheet, trackingSheet) {
+  const existingByOrder = {};
+  if (trackingSheet.getLastRow() > 1) {
+    trackingSheet.getRange(2, 1, trackingSheet.getLastRow() - 1, 10).getValues().forEach(row => {
+      const orderId = String(row[0] || "").trim();
+      if (orderId) {
+        existingByOrder[orderId] = {
+          customerMessage: String(row[4] || ""),
+          updatedAt: row[9] || new Date(),
+        };
+      }
+    });
+  }
+
+  const rows = [];
+  if (ordersSheet.getLastRow() > 1) {
+    ordersSheet.getRange(2, 1, ordersSheet.getLastRow() - 1, 11).getValues().forEach(row => {
+      const orderId = String(row[0] || "").trim();
+      if (!orderId) return;
+      const status = ORDER_STATUSES.includes(String(row[2] || "")) ? String(row[2]) : "Mới";
+      const existing = existingByOrder[orderId] || {};
+      rows.push([
+        orderId,
+        row[1],
+        KOREAN_STATUS[status],
+        KOREAN_NOTICE[status],
+        existing.customerMessage || "",
+        koreanSummary_(row[10]),
+        Number(row[8] || 0),
+        Number(row[9] || 0),
+        String(row[4] || ""),
+        existing.updatedAt || new Date(),
+      ]);
+    });
+  }
+
+  if (trackingSheet.getMaxRows() > 1) {
+    trackingSheet.getRange(2, 1, trackingSheet.getMaxRows() - 1, 10).clearContent();
+  }
+  if (rows.length) {
+    trackingSheet.getRange(2, 1, rows.length, 10)
+      .setValues(rows)
+      .setVerticalAlignment("middle")
+      .setWrap(true);
+    trackingSheet.getRange(2, 2, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    trackingSheet.getRange(2, 7, rows.length, 1).setNumberFormat("0");
+    trackingSheet.getRange(2, 8, rows.length, 1).setNumberFormat('#,##0" ₩"');
+    trackingSheet.getRange(2, 10, rows.length, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+  }
+  const filter = trackingSheet.getFilter();
+  if (filter && (filter.getRange().getNumColumns() !== 10 || filter.getRange().getNumRows() !== trackingSheet.getLastRow())) {
+    filter.remove();
+  }
+  if (!trackingSheet.getFilter() && trackingSheet.getLastRow() > 1) {
+    trackingSheet.getRange(1, 1, trackingSheet.getLastRow(), 10).createFilter();
+  }
+}
+
+function upsertTrackingOrder_(trackingSheet, order) {
+  if (!trackingSheet) return;
+  const status = ORDER_STATUSES.includes(order.status) ? order.status : "Mới";
+  const matches = trackingSheet.createTextFinder(String(order.orderId))
+    .matchEntireCell(true)
+    .findAll()
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1);
+  const row = matches.length ? matches[0].getRow() : trackingSheet.getLastRow() + 1;
+  const customerMessage = matches.length ? String(trackingSheet.getRange(row, 5).getValue() || "") : "";
+  trackingSheet.getRange(row, 1, 1, 10).setValues([[
+    String(order.orderId || ""),
+    order.placedAt || new Date(),
+    KOREAN_STATUS[status],
+    KOREAN_NOTICE[status],
+    customerMessage,
+    koreanSummary_(order.summary),
+    Number(order.totalQuantity || 0),
+    Number(order.totalPrice || 0),
+    String(order.phone || ""),
+    new Date(),
+  ]]).setVerticalAlignment("middle").setWrap(true);
+  trackingSheet.getRange(row, 2).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+  trackingSheet.getRange(row, 7).setNumberFormat("0");
+  trackingSheet.getRange(row, 8).setNumberFormat('#,##0" ₩"');
+  trackingSheet.getRange(row, 10).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+}
+
+function syncTrackingStatus_(trackingSheet, orderId, status) {
+  if (!trackingSheet) return;
+  trackingSheet.createTextFinder(orderId)
+    .matchEntireCell(true)
+    .findAll()
+    .filter(cell => cell.getColumn() === 1 && cell.getRow() > 1)
+    .forEach(cell => {
+      const row = cell.getRow();
+      trackingSheet.getRange(row, 3).setValue(KOREAN_STATUS[status]);
+      trackingSheet.getRange(row, 4).setValue(KOREAN_NOTICE[status]);
+      trackingSheet.getRange(row, 10).setValue(new Date()).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    });
+}
+
+function internalStatusFromKorean_(value) {
+  const korean = String(value || "").trim();
+  const found = ORDER_STATUSES.find(status => KOREAN_STATUS[status] === korean);
+  return found || "Mới";
+}
+
+function koreanSummary_(value) {
+  return String(value || "")
+    .replaceAll("Giữ nguyên thiết kế", "기존 디자인 유지")
+    .replaceAll("Yêu cầu thiết kế riêng", "별도 디자인 요청")
+    .replaceAll("Theo mẫu", "기존 디자인 유지");
 }
 
 function normalizeExistingDesignChoices_(itemsSheet) {
@@ -370,6 +561,31 @@ function applyStatusRules_(sheet, column) {
     ["Đang giao", "#d9d2e9", "#351c75"],
     ["Hoàn thành", "#b6d7a8", "#274e13"],
     ["Đã hủy", "#f4cccc", "#990000"],
+  ];
+  const statusRules = styles.map(([status, background, fontColor]) =>
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo(status)
+      .setBackground(background)
+      .setFontColor(fontColor)
+      .setRanges([statusRange])
+      .build()
+  );
+  sheet.setConditionalFormatRules(otherRules.concat(statusRules));
+}
+
+function applyKoreanStatusRules_(sheet, column) {
+  const statusRange = sheet.getRange(2, column, Math.max(sheet.getMaxRows() - 1, 1), 1);
+  const otherRules = sheet.getConditionalFormatRules().filter(rule =>
+    !rule.getRanges().some(range => range.getColumn() === column && range.getNumColumns() === 1)
+  );
+  const styles = [
+    ["신규 접수", "#fff2cc", "#7f6000"],
+    ["주문 확인", "#d9ead3", "#274e13"],
+    ["디자인 진행", "#d9eaf7", "#134f5c"],
+    ["제작 중", "#cfe2f3", "#073763"],
+    ["배송 중", "#d9d2e9", "#351c75"],
+    ["완료", "#b6d7a8", "#274e13"],
+    ["취소", "#f4cccc", "#990000"],
   ];
   const statusRules = styles.map(([status, background, fontColor]) =>
     SpreadsheetApp.newConditionalFormatRule()
