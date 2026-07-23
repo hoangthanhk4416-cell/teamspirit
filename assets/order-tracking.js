@@ -109,7 +109,7 @@
         <span class="status-badge ${cancelled ? "cancelled" : ""}">${escapeHtml(order.status || statusLabels[order.statusKey] || "-")}</span>
       </div>
       <div class="order-meta">
-        <div><span>주문 일시 (베트남 시간)</span><strong>${escapeHtml(order.placedAt || "-")}</strong></div>
+        <div><span>주문 일시</span><strong>${escapeHtml(order.placedAt || "-")}</strong></div>
         <div><span>주문 수량</span><strong>${Number(order.totalQuantity || 0)}개</strong></div>
         <div><span>주문 금액</span><strong>${formatPrice(order.totalPrice)}</strong></div>
       </div>

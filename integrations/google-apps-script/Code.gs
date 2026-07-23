@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v4";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v5";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn thành", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 const KOREAN_STATUS = {
@@ -237,7 +237,7 @@ function ensureSheetLayout_(spreadsheet) {
 
   const orderHeaders = [
     "Mã đơn",
-    "Thời gian đặt hàng (Việt Nam)",
+    "Thời gian đặt hàng",
     "Trạng thái",
     "Tên khách hàng",
     "Số điện thoại",
@@ -269,7 +269,7 @@ function ensureSheetLayout_(spreadsheet) {
   ];
   const trackingHeaders = [
     "주문번호",
-    "주문일시 (베트남 시간)",
+    "주문일시",
     "진행상태",
     "기본 진행 안내",
     "고객 안내 메시지 (직접 입력)",
