@@ -293,23 +293,43 @@ function ensureSheetLayout_(spreadsheet) {
     itemsSheet.getRange(2, 8, itemsSheet.getLastRow() - 1, 2).setNumberFormat('#,##0" ₩"');
   }
   if (trackingSheet.getLastRow() > 1) {
-    trackingSheet.getRange(2, 2, trackingSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
-    trackingSheet.getRange(2, 7, trackingSheet.getLastRow() - 1, 1).setNumberFormat("0");
-    trackingSheet.getRange(2, 8, trackingSheet.getLastRow() - 1, 1).setNumberFormat('#,##0" ₩"');
-    trackingSheet.getRange(2, 10, trackingSheet.getLastRow() - 1, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+    const trackingRowCount = trackingSheet.getLastRow() - 1;
+    safeSheetOperation_("format tracking order time", () =>
+      trackingSheet.getRange(2, 2, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
+    );
+    safeSheetOperation_("format tracking quantity", () =>
+      trackingSheet.getRange(2, 7, trackingRowCount, 1).setNumberFormat("0")
+    );
+    safeSheetOperation_("format tracking amount", () =>
+      trackingSheet.getRange(2, 8, trackingRowCount, 1).setNumberFormat('#,##0" ₩"')
+    );
+    safeSheetOperation_("format tracking update time", () =>
+      trackingSheet.getRange(2, 10, trackingRowCount, 1).setNumberFormat("dd/MM/yyyy HH:mm:ss")
+    );
   }
 
   normalizeExistingDesignChoices_(itemsSheet);
   syncAllStatuses_(ordersSheet, itemsSheet);
   syncTrackingSheet_(ordersSheet, trackingSheet);
-  applyDropdown_(ordersSheet, 3, ORDER_STATUSES);
-  applyDropdown_(itemsSheet, 6, DESIGN_CHOICES);
-  applyDropdown_(itemsSheet, 14, ORDER_STATUSES);
-  applyDropdown_(trackingSheet, 3, Object.values(KOREAN_STATUS));
-  applyStatusRules_(ordersSheet, 3);
-  applyStatusRules_(itemsSheet, 14);
-  applyKoreanStatusRules_(trackingSheet, 3);
+  safeSheetOperation_("orders status dropdown", () => applyDropdown_(ordersSheet, 3, ORDER_STATUSES));
+  safeSheetOperation_("items design dropdown", () => applyDropdown_(itemsSheet, 6, DESIGN_CHOICES));
+  safeSheetOperation_("items status dropdown", () => applyDropdown_(itemsSheet, 14, ORDER_STATUSES));
+  safeSheetOperation_("tracking status dropdown", () => applyDropdown_(trackingSheet, 3, Object.values(KOREAN_STATUS)));
+  safeSheetOperation_("orders status colors", () => applyStatusRules_(ordersSheet, 3));
+  safeSheetOperation_("items status colors", () => applyStatusRules_(itemsSheet, 14));
+  safeSheetOperation_("tracking status colors", () => applyKoreanStatusRules_(trackingSheet, 3));
   properties.setProperty("SHEET_LAYOUT_VERSION", SHEET_LAYOUT_VERSION);
+}
+
+function safeSheetOperation_(description, callback) {
+  try {
+    callback();
+  } catch (error) {
+    // Some spreadsheets use the newer Google Sheets Table feature. A Table
+    // can reject column-level formatting or validation even when the selected
+    // range is one column. These presentation helpers must never stop setup.
+    console.log(`Skipped ${description}: ${error.message}`);
+  }
 }
 
 function setupOrderSheets() {
