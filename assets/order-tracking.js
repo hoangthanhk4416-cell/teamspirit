@@ -101,7 +101,7 @@
   }
 
   function koreanOptionLabel(value) {
-    const text = String(value || "").trim();
+    const text = String(value || "").trim().normalize("NFC");
     const options = {
       "giữ nguyên thiết kế": "기존 디자인 유지",
       "yêu cầu thiết kế riêng": "별도 디자인 요청",
@@ -117,12 +117,12 @@
       "hồng": "분홍",
       "khác": "기타",
     };
-    return options[text.toLocaleLowerCase("vi")] || text;
+    return options[text.toLowerCase()] || text;
   }
 
   function formatSummary(value) {
     return String(value || "상품 정보 확인 중").split(/\r?\n/).map(line => {
-      const parts = line.split(" | ");
+      const parts = line.split(/\s*\|\s*/);
       if (parts.length < 4) return escapeHtml(line);
       const [name, size, option, ...rest] = parts;
       return `${escapeHtml(name)} | <span translate="no">${escapeHtml(normalizeSize(size))}</span> | ${escapeHtml(koreanOptionLabel(option))} | ${rest.map(escapeHtml).join(" | ")}`;
