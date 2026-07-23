@@ -2,7 +2,7 @@
   "use strict";
 
   const config = window.TEAMSPIRIT_ORDER_CONFIG || {};
-  const sizes = ["55 XS","60 S","65 M","70 L","75 XL","80 2XL","85 3XL","90","95","100","105","110","Khác"];
+  const sizes = ["55 (XS)","60 (S)","65 (M)","70 (L)","75 (XL)","80 (2XL)","85 (3XL)","90","95","100","105","110","Khác"];
   const colors = [
     { label: "기존 디자인 유지", value: "Giữ nguyên thiết kế" },
     { label: "별도 디자인 요청", value: "Yêu cầu thiết kế riêng" },
@@ -14,6 +14,11 @@
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[char]));
+  const normalizeSize = value => {
+    const text = String(value || "").trim().replace(/\b(lít|lit|liters?|litres?)\b/gi, "L");
+    const match = text.match(/^(\d+)\s*\(?\s*(XS|S|M|L|XL|2XL|3XL|4XL)\s*\)?$/i);
+    return match ? `${match[1]} (${match[2].toUpperCase()})` : text;
+  };
   const numericPrice = value => {
     const digits = String(value || "").replace(/[^\d]/g, "");
     return digits ? Number(digits) : 0;
@@ -76,14 +81,14 @@
   function renderStepOne() {
     currentStep = 1;
     const body = document.getElementById("tsOrderBody");
-    const existingSize = document.querySelector(".product-size.active")?.dataset.size || "";
+    const existingSize = normalizeSize(document.querySelector(".product-size.active")?.dataset.size || "");
     body.innerHTML = `${progress(1)}
       <div class="ts-order-product">
         <img src="${escapeHtml(selectedProduct.image)}" alt="">
         <div><strong>${escapeHtml(selectedProduct.name)}</strong><span>${escapeHtml(selectedProduct.price || "가격 문의")}</span></div>
       </div>
       <div class="ts-order-grid">
-        <div class="ts-order-field"><label for="tsSize">사이즈 *</label><select id="tsSize" required><option value="">사이즈 선택</option>${sizes.map(size => `<option ${size === existingSize ? "selected" : ""}>${escapeHtml(size)}</option>`).join("")}</select></div>
+        <div class="ts-order-field"><label for="tsSize">사이즈 *</label><select id="tsSize" translate="no" required><option value="">사이즈 선택</option>${sizes.map(size => `<option value="${escapeHtml(size)}" translate="no" ${size === existingSize ? "selected" : ""}>${escapeHtml(size)}</option>`).join("")}</select></div>
         <div class="ts-order-field"><label for="tsColor">디자인 *</label><select id="tsColor" required><option value="">디자인 선택</option>${colors.map(color => `<option value="${escapeHtml(color.value)}">${escapeHtml(color.label)}</option>`).join("")}</select></div>
         <div class="ts-order-field"><label for="tsQuantity">수량 *</label><input id="tsQuantity" type="number" min="1" max="999" value="${escapeHtml(document.getElementById("productQuantity")?.value || 1)}" inputmode="numeric" required></div>
         <div class="ts-order-field"><label for="tsJerseyNumber">등번호</label><input id="tsJerseyNumber" maxlength="3" placeholder="예: 10"></div>
@@ -97,7 +102,7 @@
   }
 
   function collectStepOne() {
-    const size = document.getElementById("tsSize").value;
+    const size = normalizeSize(document.getElementById("tsSize").value);
     const colorSelect = document.getElementById("tsColor");
     const color = colorSelect.value;
     const colorLabel = colorSelect.selectedOptions[0]?.textContent || color;
@@ -126,7 +131,7 @@
     document.getElementById("tsOrderBody").innerHTML = `${progress(2)}
       <div class="ts-order-product">
         <img src="${escapeHtml(selectedProduct.image)}" alt="">
-        <div><strong>${escapeHtml(selectedProduct.name)}</strong><span>${escapeHtml(selectedProduct.size)} · ${escapeHtml(selectedProduct.colorLabel || selectedProduct.color)} · ${selectedProduct.quantity}개</span></div>
+        <div><strong>${escapeHtml(selectedProduct.name)}</strong><span><span translate="no">${escapeHtml(selectedProduct.size)}</span> · ${escapeHtml(selectedProduct.colorLabel || selectedProduct.color)} · ${selectedProduct.quantity}개</span></div>
       </div>
       <div class="ts-order-grid">
         <div class="ts-order-field"><label for="tsCustomerName">주문자 이름 *</label><input id="tsCustomerName" autocomplete="name" maxlength="80" required></div>

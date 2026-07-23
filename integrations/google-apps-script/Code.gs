@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v7";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v8";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 const KOREAN_STATUS = {
@@ -59,7 +59,10 @@ function doPost(event) {
     const itemsSheet = spreadsheet.getSheetByName(ITEMS_SHEET);
     if (!ordersSheet || !itemsSheet) throw new Error("Không tìm thấy tab nhận đơn");
 
-    const items = payload.items || [];
+    const items = (payload.items || []).map(item => ({
+      ...item,
+      size: normalizeSize_(item.size),
+    }));
     const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const totalPrice = items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
     const summary = items.map(item => `${item.name} | ${item.size} | ${item.color} | x${item.quantity}`).join("\n");
@@ -314,6 +317,7 @@ function ensureSheetLayout_(spreadsheet) {
   }
 
   normalizeExistingDesignChoices_(itemsSheet);
+  normalizeExistingSizes_(ordersSheet, itemsSheet);
   syncAllStatuses_(ordersSheet, itemsSheet);
   syncTrackingSheet_(ordersSheet, trackingSheet);
   safeSheetOperation_("orders status dropdown", () => applyDropdown_(ordersSheet, 3, ORDER_STATUSES));
@@ -568,10 +572,37 @@ function canonicalStatus_(value) {
 }
 
 function koreanSummary_(value) {
-  return String(value || "")
+  return normalizeSizesInText_(value)
     .replaceAll("Giữ nguyên thiết kế", "기존 디자인 유지")
     .replaceAll("Yêu cầu thiết kế riêng", "별도 디자인 요청")
     .replaceAll("Theo mẫu", "기존 디자인 유지");
+}
+
+function normalizeSize_(value) {
+  const text = String(value || "").trim().replace(/\b(lít|lit|liters?|litres?)\b/gi, "L");
+  const match = text.match(/^(\d+)\s*\(?\s*(XS|S|M|L|XL|2XL|3XL|4XL)\s*\)?$/i);
+  return match ? `${match[1]} (${match[2].toUpperCase()})` : text;
+}
+
+function normalizeSizesInText_(value) {
+  return String(value || "").replace(
+    /(^|[\s|])(\d+)\s*\(?\s*(XS|S|M|L|XL|2XL|3XL|4XL|lít|lit|liters?|litres?)\s*\)?(?=\s*(?:\||$))/gim,
+    (_match, prefix, number, size) => {
+      const normalized = /^(lít|lit|liters?|litres?)$/i.test(size) ? "L" : size.toUpperCase();
+      return `${prefix}${number} (${normalized})`;
+    }
+  );
+}
+
+function normalizeExistingSizes_(ordersSheet, itemsSheet) {
+  if (ordersSheet.getLastRow() > 1) {
+    const orderRange = ordersSheet.getRange(2, 11, ordersSheet.getLastRow() - 1, 1);
+    orderRange.setValues(orderRange.getDisplayValues().map(row => [normalizeSizesInText_(row[0])]));
+  }
+  if (itemsSheet.getLastRow() > 1) {
+    const itemRange = itemsSheet.getRange(2, 5, itemsSheet.getLastRow() - 1, 1);
+    itemRange.setValues(itemRange.getDisplayValues().map(row => [normalizeSize_(row[0])]));
+  }
 }
 
 function normalizeExistingDesignChoices_(itemsSheet) {

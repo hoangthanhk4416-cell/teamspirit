@@ -94,6 +94,21 @@
     return `${new Intl.NumberFormat("ko-KR").format(Number(value || 0))}원`;
   }
 
+  function normalizeSize(value) {
+    const text = String(value || "").trim().replace(/\b(lít|lit|liters?|litres?)\b/gi, "L");
+    const match = text.match(/^(\d+)\s*\(?\s*(XS|S|M|L|XL|2XL|3XL|4XL)\s*\)?$/i);
+    return match ? `${match[1]} (${match[2].toUpperCase()})` : text;
+  }
+
+  function formatSummary(value) {
+    return String(value || "상품 정보 확인 중").split(/\r?\n/).map(line => {
+      const parts = line.split(" | ");
+      if (parts.length < 4) return escapeHtml(line);
+      const [name, size, ...rest] = parts;
+      return `${escapeHtml(name)} | <span translate="no">${escapeHtml(normalizeSize(size))}</span> | ${rest.map(escapeHtml).join(" | ")}`;
+    }).join("<br>");
+  }
+
   function orderCard(order) {
     const cancelled = order.statusKey === "CANCELLED";
     const customerMessage = String(order.customerMessage || "").trim();
@@ -113,7 +128,7 @@
         <div><span>주문 수량</span><strong>${Number(order.totalQuantity || 0)}개</strong></div>
         <div><span>주문 금액</span><strong>${formatPrice(order.totalPrice)}</strong></div>
       </div>
-      <p class="order-summary">${escapeHtml(order.summary || "상품 정보 확인 중")}</p>
+      <p class="order-summary">${formatSummary(order.summary)}</p>
       <div class="order-notice"><strong>현재 진행 안내</strong><p>${escapeHtml(order.defaultMessage || "주문 진행 상황을 확인하고 있습니다.")}</p></div>
       ${customerMessage ? `<div class="customer-notice"><strong>TEAMSPIRIT 고객 안내</strong><p>${escapeHtml(customerMessage)}</p></div>` : ""}
       ${statusSteps(order.statusKey)}
