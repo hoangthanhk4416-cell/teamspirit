@@ -3,9 +3,9 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v10";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v11";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
-const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
+const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Màu sắc tùy chỉnh"];
 const KOREAN_STATUS = {
   "Mới": "신규 접수",
   "Đã xác nhận": "주문 확인",
@@ -65,7 +65,7 @@ function doPost(event) {
     }));
     const totalQuantity = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const totalPrice = items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
-    const summary = items.map(item => `${item.name} | ${item.size} | ${item.color} | x${item.quantity}`).join("\n");
+  const summary = items.map(item => `${item.name} | ${item.size} | ${normalizeColor_(item.color)} | x${item.quantity}`).join("\n");
     const contactRequest = items.map(item => item.designRequest).filter(Boolean).join(" | ");
 
     ordersSheet.appendRow([
@@ -211,20 +211,17 @@ function safe_(value) {
 }
 
 function normalizeColor_(value) {
-  const colors = {
-    "디자인 기본색": "Theo mẫu",
-    "블랙": "Đen",
-    "화이트": "Trắng",
-    "레드": "Đỏ",
-    "블루": "Xanh dương",
-    "그린": "Xanh lá",
-    "옐로": "Vàng",
-    "오렌지": "Cam",
-    "퍼플": "Tím",
-    "핑크": "Hồng",
-    "기타": "Khác",
-  };
-  return colors[value] || value;
+  const text = String(value || "").trim().normalize("NFC");
+  if (!text) return "";
+  const key = text.toLowerCase();
+  const keepDesign = [
+    "giữ nguyên thiết kế",
+    "theo mẫu",
+    "thiết kế cơ bản",
+    "디자인 기본색",
+    "기존 디자인 유지",
+  ];
+  return keepDesign.includes(key) ? DESIGN_CHOICES[0] : DESIGN_CHOICES[1];
 }
 
 function ensureSheetLayout_(spreadsheet) {
@@ -583,18 +580,19 @@ function koreanOptionLabel_(value) {
   const text = String(value || "").trim().normalize("NFC");
   const options = {
     "giữ nguyên thiết kế": "기존 디자인 유지",
-    "yêu cầu thiết kế riêng": "별도 디자인 요청",
+    "màu sắc tùy chỉnh": "색상 맞춤 요청",
+    "yêu cầu thiết kế riêng": "색상 맞춤 요청",
     "theo mẫu": "기존 디자인 유지",
-    "trắng": "흰색",
-    "đen": "검정",
-    "đỏ": "빨강",
-    "xanh dương": "파랑",
-    "xanh lá": "초록",
-    "vàng": "노랑",
-    "cam": "주황",
-    "tím": "보라",
-    "hồng": "분홍",
-    "khác": "기타",
+    "trắng": "색상 맞춤 요청",
+    "đen": "색상 맞춤 요청",
+    "đỏ": "색상 맞춤 요청",
+    "xanh dương": "색상 맞춤 요청",
+    "xanh lá": "색상 맞춤 요청",
+    "vàng": "색상 맞춤 요청",
+    "cam": "색상 맞춤 요청",
+    "tím": "색상 맞춤 요청",
+    "hồng": "색상 맞춤 요청",
+    "khác": "색상 맞춤 요청",
   };
   return options[text.toLowerCase()] || text;
 }
@@ -630,11 +628,7 @@ function normalizeExistingDesignChoices_(itemsSheet) {
   if (itemsSheet.getLastRow() < 2) return;
 
   const range = itemsSheet.getRange(2, 6, itemsSheet.getLastRow() - 1, 1);
-  const values = range.getDisplayValues().map(row => {
-    const value = String(row[0] || "").trim();
-    if (!value || DESIGN_CHOICES.includes(value)) return [value];
-    return ["Giữ nguyên thiết kế"];
-  });
+  const values = range.getDisplayValues().map(row => [normalizeColor_(row[0])]);
   range.setValues(values);
 }
 

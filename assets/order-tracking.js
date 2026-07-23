@@ -104,18 +104,19 @@
     const text = String(value || "").trim().normalize("NFC");
     const options = {
       "giữ nguyên thiết kế": "기존 디자인 유지",
-      "yêu cầu thiết kế riêng": "별도 디자인 요청",
+      "màu sắc tùy chỉnh": "색상 맞춤 요청",
+      "yêu cầu thiết kế riêng": "색상 맞춤 요청",
       "theo mẫu": "기존 디자인 유지",
-      "trắng": "흰색",
-      "đen": "검정",
-      "đỏ": "빨강",
-      "xanh dương": "파랑",
-      "xanh lá": "초록",
-      "vàng": "노랑",
-      "cam": "주황",
-      "tím": "보라",
-      "hồng": "분홍",
-      "khác": "기타",
+      "trắng": "색상 맞춤 요청",
+      "đen": "색상 맞춤 요청",
+      "đỏ": "색상 맞춤 요청",
+      "xanh dương": "색상 맞춤 요청",
+      "xanh lá": "색상 맞춤 요청",
+      "vàng": "색상 맞춤 요청",
+      "cam": "색상 맞춤 요청",
+      "tím": "색상 맞춤 요청",
+      "hồng": "색상 맞춤 요청",
+      "khác": "색상 맞춤 요청",
     };
     return options[text.toLowerCase()] || text;
   }

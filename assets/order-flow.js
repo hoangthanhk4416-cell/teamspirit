@@ -5,7 +5,7 @@
   const sizes = ["55 (XS)","60 (S)","65 (M)","70 (L)","75 (XL)","80 (2XL)","85 (3XL)","90","95","100","105","110","Khác"];
   const colors = [
     { label: "기존 디자인 유지", value: "Giữ nguyên thiết kế" },
-    { label: "별도 디자인 요청", value: "Yêu cầu thiết kế riêng" },
+    { label: "색상 맞춤 요청", value: "Màu sắc tùy chỉnh" },
   ];
   const contacts = ["Instagram","KakaoTalk","Điện thoại"];
   let selectedProduct = null;
@@ -89,7 +89,7 @@
       </div>
       <div class="ts-order-grid">
         <div class="ts-order-field"><label for="tsSize">사이즈 *</label><select id="tsSize" translate="no" required><option value="">사이즈 선택</option>${sizes.map(size => `<option value="${escapeHtml(size)}" translate="no" ${size === existingSize ? "selected" : ""}>${escapeHtml(size)}</option>`).join("")}</select></div>
-        <div class="ts-order-field"><label for="tsColor">디자인 *</label><select id="tsColor" required><option value="">디자인 선택</option>${colors.map(color => `<option value="${escapeHtml(color.value)}">${escapeHtml(color.label)}</option>`).join("")}</select></div>
+        <div class="ts-order-field"><label for="tsColor">색상 *</label><select id="tsColor" required><option value="">색상 선택</option>${colors.map(color => `<option value="${escapeHtml(color.value)}">${escapeHtml(color.label)}</option>`).join("")}</select></div>
         <div class="ts-order-field"><label for="tsQuantity">수량 *</label><input id="tsQuantity" type="number" min="1" max="999" value="${escapeHtml(document.getElementById("productQuantity")?.value || 1)}" inputmode="numeric" required></div>
         <div class="ts-order-field"><label for="tsJerseyNumber">등번호</label><input id="tsJerseyNumber" maxlength="3" placeholder="예: 10"></div>
         <div class="ts-order-field"><label for="tsPrintName">마킹 이름</label><input id="tsPrintName" maxlength="30" placeholder="이름 또는 문구 입력"></div>
@@ -108,7 +108,7 @@
     const colorLabel = colorSelect.selectedOptions[0]?.textContent || color;
     const quantity = Math.max(1, Math.min(999, Number(document.getElementById("tsQuantity").value) || 0));
     if (!size || !color || !quantity) {
-      document.getElementById("tsOrderStatus").textContent = "사이즈, 디자인과 수량을 선택해 주세요.";
+      document.getElementById("tsOrderStatus").textContent = "사이즈, 색상과 수량을 선택해 주세요.";
       return false;
     }
     selectedProduct = {
