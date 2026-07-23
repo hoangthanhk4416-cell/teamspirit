@@ -73,8 +73,9 @@ function validatePayload_(payload) {
     throw new Error("Dữ liệu đơn hàng không hợp lệ");
   }
   if (String(payload.customer.name || "").trim().length < 2) throw new Error("Thiếu tên khách hàng");
-  if (String(payload.customer.phone || "").replace(/\D/g, "").length < 8) throw new Error("Số điện thoại không hợp lệ");
-  if (String(payload.customer.address || "").trim().length < 8) throw new Error("Thiếu địa chỉ");
+  if (!/^0\d{8,10}$/.test(String(payload.customer.phone || "").replace(/\D/g, ""))) {
+    throw new Error("Số điện thoại không hợp lệ");
+  }
   if (payload.items.length > 50) throw new Error("Đơn hàng có quá nhiều dòng sản phẩm");
 }
 
