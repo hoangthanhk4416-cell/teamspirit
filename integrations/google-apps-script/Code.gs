@@ -3,7 +3,7 @@ const ORDERS_SHEET = "Đơn hàng";
 const ITEMS_SHEET = "Chi tiết sản phẩm";
 const TRACKING_SHEET = "Tra cứu vận đơn";
 const VIETNAM_TIME_ZONE = "Asia/Ho_Chi_Minh";
-const SHEET_LAYOUT_VERSION = "2026-07-24-v8";
+const SHEET_LAYOUT_VERSION = "2026-07-24-v9";
 const ORDER_STATUSES = ["Mới", "Đã xác nhận", "Đang thiết kế", "Đang sản xuất", "Đang giao", "Hoàn tất", "Đã hủy"];
 const DESIGN_CHOICES = ["Giữ nguyên thiết kế", "Yêu cầu thiết kế riêng"];
 const KOREAN_STATUS = {
@@ -572,10 +572,31 @@ function canonicalStatus_(value) {
 }
 
 function koreanSummary_(value) {
-  return normalizeSizesInText_(value)
-    .replaceAll("Giữ nguyên thiết kế", "기존 디자인 유지")
-    .replaceAll("Yêu cầu thiết kế riêng", "별도 디자인 요청")
-    .replaceAll("Theo mẫu", "기존 디자인 유지");
+  return normalizeSizesInText_(value).split(/\r?\n/).map(line => {
+    const parts = line.split(" | ");
+    if (parts.length >= 4) parts[2] = koreanOptionLabel_(parts[2]);
+    return parts.join(" | ");
+  }).join("\n");
+}
+
+function koreanOptionLabel_(value) {
+  const text = String(value || "").trim();
+  const options = {
+    "giữ nguyên thiết kế": "기존 디자인 유지",
+    "yêu cầu thiết kế riêng": "별도 디자인 요청",
+    "theo mẫu": "기존 디자인 유지",
+    "trắng": "흰색",
+    "đen": "검정",
+    "đỏ": "빨강",
+    "xanh dương": "파랑",
+    "xanh lá": "초록",
+    "vàng": "노랑",
+    "cam": "주황",
+    "tím": "보라",
+    "hồng": "분홍",
+    "khác": "기타",
+  };
+  return options[text.toLocaleLowerCase("vi")] || text;
 }
 
 function normalizeSize_(value) {

@@ -100,12 +100,32 @@
     return match ? `${match[1]} (${match[2].toUpperCase()})` : text;
   }
 
+  function koreanOptionLabel(value) {
+    const text = String(value || "").trim();
+    const options = {
+      "giữ nguyên thiết kế": "기존 디자인 유지",
+      "yêu cầu thiết kế riêng": "별도 디자인 요청",
+      "theo mẫu": "기존 디자인 유지",
+      "trắng": "흰색",
+      "đen": "검정",
+      "đỏ": "빨강",
+      "xanh dương": "파랑",
+      "xanh lá": "초록",
+      "vàng": "노랑",
+      "cam": "주황",
+      "tím": "보라",
+      "hồng": "분홍",
+      "khác": "기타",
+    };
+    return options[text.toLocaleLowerCase("vi")] || text;
+  }
+
   function formatSummary(value) {
     return String(value || "상품 정보 확인 중").split(/\r?\n/).map(line => {
       const parts = line.split(" | ");
       if (parts.length < 4) return escapeHtml(line);
-      const [name, size, ...rest] = parts;
-      return `${escapeHtml(name)} | <span translate="no">${escapeHtml(normalizeSize(size))}</span> | ${rest.map(escapeHtml).join(" | ")}`;
+      const [name, size, option, ...rest] = parts;
+      return `${escapeHtml(name)} | <span translate="no">${escapeHtml(normalizeSize(size))}</span> | ${escapeHtml(koreanOptionLabel(option))} | ${rest.map(escapeHtml).join(" | ")}`;
     }).join("<br>");
   }
 
